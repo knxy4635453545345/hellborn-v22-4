@@ -1,25 +1,39 @@
 -- ============================================================
--- HELLBORN v22.5 — FUNCIONAL
--- Insert = abre/fecha menu | Q = auto flick
+-- HELLBORN v22.6 — BULLETPROOF
+-- Insert via ContextActionService + loop | Q via loop
+-- Layout retangular fixo | Botão flutuante mobile
 -- ============================================================
 
 local SV = {
-    P=game:GetService("Players"), U=game:GetService("UserInputService"),
-    R=game:GetService("RunService"), T=game:GetService("TweenService"),
-    L=game:GetService("Lighting"), S=game:GetService("SoundService"),
-    H=game:GetService("HttpService"),
+    P  = game:GetService("Players"),
+    U  = game:GetService("UserInputService"),
+    R  = game:GetService("RunService"),
+    T  = game:GetService("TweenService"),
+    L  = game:GetService("Lighting"),
+    S  = game:GetService("SoundService"),
+    H  = game:GetService("HttpService"),
+    CAS = game:GetService("ContextActionService"),
 }
 local LP = SV.P.LocalPlayer
 local Cam = workspace.CurrentCamera
-local PG = LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui", 10)
-if not PG then warn("[HB] Sem PlayerGui"); return end
+
+local PG = LP:FindFirstChild("PlayerGui")
+if not PG then
+    local t = 0
+    while not PG and t < 30 do
+        PG = LP:FindFirstChild("PlayerGui")
+        task.wait(0.1); t = t + 1
+    end
+end
+if not PG then warn("[HB] PlayerGui nao carregou"); return end
 
 local SID = tostring(math.random(10000000, 99999999))
 local GNAME = "cfg_"..SID
 local HNAME = "hl_"..SID
 
 local function Create(c, p)
-    local i = Instance.new(c); local parent = nil
+    local i = Instance.new(c)
+    local parent = nil
     for k, v in pairs(p) do
         if k == "Parent" then parent = v else pcall(function() i[k] = v end) end
     end
@@ -27,6 +41,7 @@ local function Create(c, p)
     return i
 end
 local tick = tick or os.clock
+print("[HB v22.6] Iniciando...")
 
 -- ═══ STATE ═══
 local State = {
@@ -34,21 +49,19 @@ local State = {
     TriggerBot = true, TriggerRadius = 40,
     SilentAim = true, AIEnabled = true, KillConfirm = true,
     ESP = false, ESPName = true,
-    HitmarkerEnabled = true, KillFeedEnabled = true,
-    PingRealtime = true, UI_Sounds = true,
+    HitmarkerEnabled = true, PingRealtime = true, UI_Sounds = true,
     Kills = 0, Deaths = 0, GUI_Visible = true,
-    AntiFling2 = true, AntiRagdoll = true,
+    AntiFling2 = true,
 }
 local Colors = {
-    Background=Color3.fromRGB(12,12,12), Sidebar=Color3.fromRGB(22,22,22),
-    Accent=Color3.fromRGB(200,20,20), Text=Color3.fromRGB(240,240,240),
-    SubText=Color3.fromRGB(140,140,140), ElementBg=Color3.fromRGB(32,32,32),
+    Background=Color3.fromRGB(15,15,15), Sidebar=Color3.fromRGB(25,25,25),
+    Accent=Color3.fromRGB(220,30,30), Text=Color3.fromRGB(240,240,240),
+    SubText=Color3.fromRGB(150,150,150), ElementBg=Color3.fromRGB(38,38,38),
     ToggleOff=Color3.fromRGB(55,55,55), Success=Color3.fromRGB(0,200,100),
     Warning=Color3.fromRGB(255,180,0), Danger=Color3.fromRGB(255,60,60),
-    Border=Color3.fromRGB(80,15,15),
 }
 
--- ═══ PING TRACKER ═══
+-- ═══ PING ═══
 local Ping = {samples={}, avg=0.05, jitter=0, lastBeat=0}
 task.spawn(function()
     while task.wait(0.5) do
@@ -73,7 +86,8 @@ local function RebuildPlayerList()
 end
 local function HookCharacter(p)
     p.CharacterAdded:Connect(function(c)
-        CACHE.Characters[p]=c; task.wait(0.25)
+        CACHE.Characters[p]=c
+        task.wait(0.25)
         CACHE.HeadParts[p]=c:FindFirstChild("Head")
         CACHE.HRPParts[p]=c:FindFirstChild("HumanoidRootPart")
     end)
@@ -91,7 +105,6 @@ end
 for _, p in pairs(SV.P:GetPlayers()) do AddPlayer(p) end
 SV.P.PlayerAdded:Connect(AddPlayer)
 SV.P.PlayerRemoving:Connect(RemovePlayer)
-LP.CharacterAdded:Connect(function() task.wait(0.5); Cam=workspace.CurrentCamera end)
 
 -- ═══ ROLE ═══
 local MURDERER_TOOLS = {"Knife","Cleaver","Blade"}
@@ -121,19 +134,13 @@ local function detectRole(p)
     if not char or not char.Parent then return nil end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return nil end
-    local ok, attr = pcall(function() return p:GetAttribute("Role") or p:GetAttribute("role") end)
-    if ok and attr then
-        local r = tostring(attr):lower()
-        if r:find("murder") or r:find("killer") then return "Murderer" end
-        if r:find("sheriff") or r:find("cop") then return "Sheriff" end
-    end
     if playerHasTool(p, MURDERER_TOOLS) then return "Murderer" end
     if playerHasTool(p, SHERIFF_TOOLS) then return "Sheriff" end
     return "Innocent"
 end
 local function getRole(p) return p and (detectRole(p) or "Innocent") or "Innocent" end
 
--- ═══ IA HISTÓRICO ═══
+-- ═══ IA ═══
 local Histories = {}
 local function getHistory(p)
     if not Histories[p] then
@@ -262,7 +269,7 @@ end
 
 -- ═══ SONS ═══
 local UISounds = {}
-for i = 1, 6 do
+for i = 1, 4 do
     local s = Instance.new("Sound")
     s.SoundId = "rbxassetid://6895079853"; s.Volume = 0.25; s.Parent = SV.S
     UISounds[i] = s
@@ -271,101 +278,169 @@ local SIdx = 1
 local function PlayUISound(pitch)
     if not State.UI_Sounds then return end
     local s = UISounds[SIdx]; SIdx = SIdx % #UISounds + 1
-    s.PlaybackSpeed = pitch or 1; pcall(function() s:Play() end)
-end
-local AimbotBeep = Instance.new("Sound")
-AimbotBeep.SoundId = "rbxassetid://9114375867"; AimbotBeep.Volume = 0.15; AimbotBeep.Parent = SV.S
-local function PlayAimBeep()
-    if not State.SilentAim then return end
-    pcall(function() AimbotBeep:Play() end)
+    s.PlaybackSpeed = pitch or 1
+    pcall(function() s:Play() end)
 end
 
 -- ═══════════════════════════════════════════════════════════
--- MENU - ABRE DIRETO NO TAMANHO CERTO (não depende de animação)
+-- UI — TAMANHOS FIXOS EM PIXELS (retangular garantido)
 -- ═══════════════════════════════════════════════════════════
+print("[HB] Criando ScreenGui...")
+
 local UI = {}
 UI.Screen = Create("ScreenGui", {
-    Name = GNAME, ResetOnSpawn = false, IgnoreGuiInset = true, Parent = PG,
+    Name = GNAME,
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    DisplayOrder = 999,
+    Enabled = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    Parent = PG,
 })
 
-local MW, MH = 340, 440
+-- Dimensões FIXAS (pixels puros)
+local MENU_W = 380
+local MENU_H = 460
+local HEADER_H = 40
+local SIDEBAR_W = 80
+local STATUS_H = 20
+local CONTENT_W = MENU_W - SIDEBAR_W - 12   -- 288
+local CONTENT_H = MENU_H - HEADER_H - STATUS_H - 12  -- 388
+
+print("[HB] Menu:", MENU_W, "x", MENU_H, "| Content:", CONTENT_W, "x", CONTENT_H)
+
+-- MAIN (retangular - já abre no tamanho certo)
 UI.Main = Create("Frame", {
     Name = "Main",
-    Size = UDim2.new(0, MW, 0, MH),                       -- ⭐ TAMANHO DIRETO
-    Position = UDim2.new(0.5, -MW/2, 0.5, -MH/2),          -- ⭐ POSIÇÃO DIRETA
+    Size = UDim2.new(0, MENU_W, 0, MENU_H),
+    Position = UDim2.new(0.5, -MENU_W/2, 0.5, -MENU_H/2),
+    AnchorPoint = Vector2.new(0, 0),
     BackgroundColor3 = Colors.Background,
     BackgroundTransparency = 0.05,
     BorderSizePixel = 0,
-    Visible = true,                                        -- ⭐ VISÍVEL POR PADRÃO
+    Visible = true,
+    Active = true,
     ClipsDescendants = true,
-    ZIndex = 1,
+    ZIndex = 2,
     Parent = UI.Screen,
 })
-Create("UICorner", {CornerRadius = UDim.new(0, 8), Parent = UI.Main})
-UI.MainStroke = Create("UIStroke", {Color = Colors.Accent, Thickness = 1.2, Transparency = 0.2, Parent = UI.Main})
-UI.Blur = Create("BlurEffect", {Size = 12, Parent = SV.L})
+local UI_corner = Create("UICorner", {CornerRadius = UDim.new(0, 6), Parent = UI.Main})
+Create("UIStroke", {Color = Colors.Accent, Thickness = 1.5, Transparency = 0.2, Parent = UI.Main})
+UI.Blur = Create("BlurEffect", {Size = 10, Parent = SV.L})
 
-print("[HB] Menu criado — Size:", MW, "x", MH)
+print("[HB] Main AbsoluteSize:", UI.Main.AbsoluteSize.X, "x", UI.Main.AbsoluteSize.Y)
 
--- HEADER (38px)
-local TBBG = Create("Frame", {
-    Size = UDim2.new(1, 0, 0, 38),
-    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
-    BackgroundTransparency = 0.1,
-    BorderSizePixel = 0, ZIndex = 2, Parent = UI.Main,
+-- HEADER
+local Header = Create("Frame", {
+    Name = "Header",
+    Size = UDim2.new(0, MENU_W, 0, HEADER_H),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundColor3 = Color3.fromRGB(22, 22, 22),
+    BackgroundTransparency = 0,
+    BorderSizePixel = 0,
+    ZIndex = 3,
+    Parent = UI.Main,
 })
-Create("UICorner", {CornerRadius = UDim.new(0, 8), Parent = TBBG})
+Create("UICorner", {CornerRadius = UDim.new(0, 6), Parent = Header})
+
 Create("TextLabel", {
-    Text = "HELLBORN v22.5", Font = Enum.Font.GothamBold, TextSize = 13,
+    Text = "HELLBORN v22.6",
+    Font = Enum.Font.GothamBold, TextSize = 14,
     TextColor3 = Colors.Text, BackgroundTransparency = 1,
-    Position = UDim2.new(0, 8, 0, 5), Size = UDim2.new(0, 180, 0, 14),
-    TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = TBBG,
+    Position = UDim2.new(0, 10, 0, 4),
+    Size = UDim2.new(0, 200, 0, 16),
+    TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4, Parent = Header,
 })
 Create("TextLabel", {
-    Text = "Q = Flick | Insert = Menu", Font = Enum.Font.Gotham, TextSize = 9,
+    Text = "Q = Flick  |  Insert = Menu",
+    Font = Enum.Font.Code, TextSize = 9,
     TextColor3 = Colors.Accent, BackgroundTransparency = 1,
-    Position = UDim2.new(0, 8, 0, 20), Size = UDim2.new(0, 180, 0, 12),
-    TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = TBBG,
+    Position = UDim2.new(0, 10, 0, 22),
+    Size = UDim2.new(0, 250, 0, 12),
+    TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4, Parent = Header,
 })
 
--- Botão de fechar (X)
+-- Botão X
 local CloseBtn = Create("TextButton", {
-    Text = "X", Font = Enum.Font.GothamBold, TextSize = 14,
-    TextColor3 = Colors.Text, BackgroundColor3 = Color3.fromRGB(60, 20, 20),
-    BorderSizePixel = 0, Size = UDim2.new(0, 22, 0, 22),
-    Position = UDim2.new(1, -28, 0, 8),
-    ZIndex = 3, Parent = TBBG,
+    Text = "✕", Font = Enum.Font.GothamBold, TextSize = 14,
+    TextColor3 = Colors.Text, BackgroundColor3 = Color3.fromRGB(80, 20, 20),
+    BorderSizePixel = 0,
+    Size = UDim2.new(0, 26, 0, 26),
+    Position = UDim2.new(1, -32, 0, 7),
+    AutoButtonColor = true,
+    ZIndex = 4, Parent = Header,
 })
 Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = CloseBtn})
 
--- SIDEBAR + CONTENT
+-- SIDEBAR
 UI.Sidebar = Create("Frame", {
-    Size = UDim2.new(0, 70, 1, -38 - 20 - 8),
-    Position = UDim2.new(0, 4, 0, 42),
-    BackgroundColor3 = Colors.Sidebar, BackgroundTransparency = 0.2,
-    BorderSizePixel = 0, ZIndex = 2, Parent = UI.Main,
+    Name = "Sidebar",
+    Size = UDim2.new(0, SIDEBAR_W, 0, CONTENT_H),
+    Position = UDim2.new(0, 6, 0, HEADER_H + 6),
+    BackgroundColor3 = Colors.Sidebar,
+    BackgroundTransparency = 0,
+    BorderSizePixel = 0,
+    ZIndex = 3,
+    Parent = UI.Main,
 })
-Create("UICorner", {CornerRadius = UDim.new(0, 6), Parent = UI.Sidebar})
+Create("UICorner", {CornerRadius = UDim.new(0, 5), Parent = UI.Sidebar})
 
+-- CONTENT AREA
 UI.ContentArea = Create("Frame", {
-    Size = UDim2.new(1, -78, 1, -38 - 20 - 8),
-    Position = UDim2.new(0, 74, 0, 42),
-    BackgroundTransparency = 1, ZIndex = 2, Parent = UI.Main,
+    Name = "Content",
+    Size = UDim2.new(0, CONTENT_W, 0, CONTENT_H),
+    Position = UDim2.new(0, SIDEBAR_W + 12, 0, HEADER_H + 6),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+    BackgroundTransparency = 0.2,
+    BorderSizePixel = 0,
+    ZIndex = 3,
+    Parent = UI.Main,
+})
+Create("UICorner", {CornerRadius = UDim.new(0, 5), Parent = UI.ContentArea})
+
+-- STATUS BAR
+local StatusBar = Create("Frame", {
+    Name = "Status",
+    Size = UDim2.new(0, MENU_W - 12, 0, STATUS_H),
+    Position = UDim2.new(0, 6, 1, -STATUS_H - 6),
+    BackgroundColor3 = Color3.fromRGB(22, 22, 22),
+    BorderSizePixel = 0,
+    ZIndex = 3, Parent = UI.Main,
+})
+Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = StatusBar})
+UI.StatusText = Create("TextLabel", {
+    Text = "Ready",
+    Font = Enum.Font.Code, TextSize = 9,
+    TextColor3 = Colors.SubText, BackgroundTransparency = 1,
+    Size = UDim2.new(1, -10, 1, 0),
+    Position = UDim2.new(0, 6, 0, 0),
+    TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4, Parent = StatusBar,
 })
 
--- Abas
+-- ═══ TABS ═══
 UI.TabButtons, UI.TabContents = {}, {}
-local TabsList = {{"⚔","Flick"},{"◉","ESP"},{"✦","Vis"},{"⚙","Cfg"}}
-local TabScrolling = Create("ScrollingFrame", {
-    Size = UDim2.new(1, -4, 1, -4), Position = UDim2.new(0, 2, 0, 2),
-    BackgroundTransparency = 1, ScrollBarThickness = 2,
-    ScrollBarImageColor3 = Colors.Accent, ZIndex = 3, Parent = UI.Sidebar,
+local TabsList = {
+    {"⚔", "Flick"},
+    {"◉", "ESP"},
+    {"✦", "Visual"},
+    {"⚙", "Config"},
+}
+local TabScroll = Create("ScrollingFrame", {
+    Size = UDim2.new(1, -6, 1, -6),
+    Position = UDim2.new(0, 3, 0, 3),
+    BackgroundTransparency = 1,
+    ScrollBarThickness = 2,
+    ScrollBarImageColor3 = Colors.Accent,
+    CanvasSize = UDim2.new(0, 0, 0, #TabsList * 30 + 4),
+    ZIndex = 4, Parent = UI.Sidebar,
 })
-TabScrolling.CanvasSize = UDim2.new(0, 0, 0, #TabsList * 26 + 4)
 
 local ActiveBar = Create("Frame", {
-    Size = UDim2.new(0, 2, 0, 18), Position = UDim2.new(0, 0, 0, 4),
-    BackgroundColor3 = Colors.Accent, BorderSizePixel = 0, ZIndex = 4, Parent = TabScrolling,
+    Size = UDim2.new(0, 3, 0, 22),
+    Position = UDim2.new(0, 0, 0, 4),
+    BackgroundColor3 = Colors.Accent,
+    BorderSizePixel = 0,
+    ZIndex = 5, Parent = TabScroll,
 })
 Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = ActiveBar})
 
@@ -378,56 +453,90 @@ UI.switchTab = function(name)
             ActiveBar.Position = UDim2.new(0, 0, 0, b.Position.Y.Offset + 4)
         else
             b.TextColor3 = Colors.Text
-            b.BackgroundTransparency = 0.6
+            b.BackgroundTransparency = 0.5
         end
     end
+    print("[HB] Tab:", name)
 end
 
 for i, td in ipairs(TabsList) do
     local icon, tabName = td[1], td[2]
     local Btn = Create("TextButton", {
-        Text = icon.." "..tabName, Font = Enum.Font.GothamMedium, TextSize = 9,
-        TextColor3 = Colors.Text, BackgroundColor3 = Colors.ElementBg,
-        BackgroundTransparency = 0.6, Size = UDim2.new(1, -4, 0, 22),
-        Position = UDim2.new(0, 2, 0, (i - 1) * 26 + 2),
-        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4, Parent = TabScrolling,
+        Text = " "..icon.." "..tabName,
+        Font = Enum.Font.GothamMedium, TextSize = 10,
+        TextColor3 = Colors.Text,
+        BackgroundColor3 = Colors.ElementBg,
+        BackgroundTransparency = 0.5,
+        Size = UDim2.new(1, -4, 0, 26),
+        Position = UDim2.new(0, 2, 0, (i - 1) * 30 + 2),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        AutoButtonColor = true,
+        ZIndex = 5, Parent = TabScroll,
     })
     Btn:SetAttribute("TabName", tabName)
     Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = Btn})
-    Btn.MouseButton1Click:Connect(function() PlayUISound(); UI.switchTab(tabName) end)
+    Btn.MouseButton1Click:Connect(function()
+        PlayUISound()
+        UI.switchTab(tabName)
+    end)
     UI.TabButtons[#UI.TabButtons + 1] = Btn
 end
 
--- STATUS BAR
-local StatusBar = Create("Frame", {
-    Size = UDim2.new(1, -8, 0, 18),
-    Position = UDim2.new(0, 4, 1, -22),
-    BackgroundColor3 = Color3.fromRGB(18, 18, 18),
-    BorderSizePixel = 0, ZIndex = 2, Parent = UI.Main,
-})
-Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = StatusBar})
-UI.StatusText = Create("TextLabel", {
-    Text = "Ready", Font = Enum.Font.Code, TextSize = 9,
-    TextColor3 = Colors.SubText, BackgroundTransparency = 1,
-    Size = UDim2.new(1, -8, 1, 0), Position = UDim2.new(0, 4, 0, 0),
-    TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = StatusBar,
-})
-
--- ═══ UI HELPERS ═══
+-- ═══ HELPERS ═══
 local function Section(parent, text, yPos)
-    Create("Frame", {Size = UDim2.new(0, 2, 0, 8), Position = UDim2.new(0, 0, 0, yPos + 3), BackgroundColor3 = Colors.Accent, BorderSizePixel = 0, ZIndex = 3, Parent = parent})
-    Create("TextLabel", {Text = text, Font = Enum.Font.GothamBold, TextSize = 10, TextColor3 = Colors.Text, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0, 6, 0, yPos), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = parent})
-    Create("Frame", {Size = UDim2.new(1, -4, 0, 1), Position = UDim2.new(0, 0, 0, yPos + 14), BackgroundColor3 = Colors.SubText, BackgroundTransparency = 0.7, BorderSizePixel = 0, ZIndex = 3, Parent = parent})
-    return yPos + 19
+    Create("Frame", {
+        Size = UDim2.new(0, 3, 0, 12),
+        Position = UDim2.new(0, 0, 0, yPos + 3),
+        BackgroundColor3 = Colors.Accent, BorderSizePixel = 0,
+        ZIndex = 4, Parent = parent,
+    })
+    Create("TextLabel", {
+        Text = text, Font = Enum.Font.GothamBold, TextSize = 11,
+        TextColor3 = Colors.Text, BackgroundTransparency = 1,
+        Position = UDim2.new(0, 8, 0, yPos),
+        Size = UDim2.new(1, -8, 0, 16),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 4, Parent = parent,
+    })
+    Create("Frame", {
+        Size = UDim2.new(1, -6, 0, 1),
+        Position = UDim2.new(0, 0, 0, yPos + 16),
+        BackgroundColor3 = Colors.SubText, BackgroundTransparency = 0.6,
+        BorderSizePixel = 0, ZIndex = 4, Parent = parent,
+    })
+    return yPos + 22
 end
 
 local function Toggle(parent, text, yPos, def, cb)
-    local F = Create("Frame", {Size = UDim2.new(1, -4, 0, 24), Position = UDim2.new(0, 0, 0, yPos), BackgroundColor3 = Colors.ElementBg, BackgroundTransparency = 0.4, BorderSizePixel = 0, ZIndex = 3, Parent = parent})
+    local F = Create("Frame", {
+        Size = UDim2.new(1, -8, 0, 26),
+        Position = UDim2.new(0, 0, 0, yPos),
+        BackgroundColor3 = Colors.ElementBg,
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0, ZIndex = 4, Parent = parent,
+    })
     Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = F})
-    Create("TextLabel", {Text = text, Font = Enum.Font.Gotham, TextSize = 9, TextColor3 = Colors.Text, BackgroundTransparency = 1, Size = UDim2.new(1, -40, 1, 0), Position = UDim2.new(0, 6, 0, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4, Parent = F})
-    local Bg = Create("Frame", {Size = UDim2.new(0, 26, 0, 13), Position = UDim2.new(1, -32, 0.5, -6.5), BackgroundColor3 = def and Colors.Accent or Colors.ToggleOff, BorderSizePixel = 0, ZIndex = 4, Parent = F})
+    Create("TextLabel", {
+        Text = text, Font = Enum.Font.Gotham, TextSize = 10,
+        TextColor3 = Colors.Text, BackgroundTransparency = 1,
+        Position = UDim2.new(0, 8, 0, 0),
+        Size = UDim2.new(1, -48, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 5, Parent = F,
+    })
+    local Bg = Create("Frame", {
+        Size = UDim2.new(0, 32, 0, 16),
+        Position = UDim2.new(1, -40, 0.5, -8),
+        BackgroundColor3 = def and Colors.Accent or Colors.ToggleOff,
+        BorderSizePixel = 0, ZIndex = 5, Parent = F,
+    })
     Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = Bg})
-    local C = Create("Frame", {Size = UDim2.new(0, 9, 0, 9), Position = def and UDim2.new(1, -11, 0.5, -4.5) or UDim2.new(0, 2, 0.5, -4.5), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, ZIndex = 5, Parent = Bg})
+    local C = Create("Frame", {
+        Size = UDim2.new(0, 12, 0, 12),
+        Position = def and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0, ZIndex = 6, Parent = Bg,
+    })
     Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = C})
     local on = def
     F.InputBegan:Connect(function(i)
@@ -435,61 +544,117 @@ local function Toggle(parent, text, yPos, def, cb)
             on = not on
             PlayUISound(on and 1.3 or 0.9)
             Bg.BackgroundColor3 = on and Colors.Accent or Colors.ToggleOff
-            C.Position = on and UDim2.new(1, -11, 0.5, -4.5) or UDim2.new(0, 2, 0.5, -4.5)
+            C.Position = on and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
             if cb then pcall(cb, on) end
-        end
-    end)
-    return yPos + 28
-end
-
-local function Slider(parent, text, mn, mx, def, yPos, cb)
-    local F = Create("Frame", {Size = UDim2.new(1, -4, 0, 26), Position = UDim2.new(0, 0, 0, yPos), BackgroundColor3 = Colors.ElementBg, BackgroundTransparency = 0.4, BorderSizePixel = 0, ZIndex = 3, Parent = parent})
-    Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = F})
-    Create("TextLabel", {Text = text, Font = Enum.Font.Gotham, TextSize = 9, TextColor3 = Colors.Text, BackgroundTransparency = 1, Size = UDim2.new(0.55, -8, 0.5, 0), Position = UDim2.new(0, 5, 0, 3), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4, Parent = F})
-    local VL = Create("TextLabel", {Text = tostring(def), Font = Enum.Font.Code, TextSize = 9, TextColor3 = Colors.Accent, BackgroundTransparency = 1, Size = UDim2.new(0, 24, 0.5, 0), Position = UDim2.new(0.55, -3, 0, 3), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4, Parent = F})
-    local Bg = Create("Frame", {Size = UDim2.new(0.38, -6, 0, 3), Position = UDim2.new(0.58, 3, 0.7, 0), BackgroundColor3 = Colors.ToggleOff, BorderSizePixel = 0, ZIndex = 4, Parent = F})
-    Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = Bg})
-    local Fl = Create("Frame", {Size = UDim2.new((def - mn) / (mx - mn), 0, 1, 0), BackgroundColor3 = Colors.Accent, BorderSizePixel = 0, ZIndex = 5, Parent = Bg})
-    Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = Fl})
-    local H = Create("Frame", {Size = UDim2.new(0, 8, 0, 8), Position = UDim2.new((def - mn) / (mx - mn), -4, 0.5, -4), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, ZIndex = 6, Parent = Bg})
-    Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = H})
-    local drag = false
-    Bg.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = true end end)
-    SV.U.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then drag = false end end)
-    SV.U.InputChanged:Connect(function(i)
-        if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-            local pct = math.clamp((i.Position.X - Bg.AbsolutePosition.X) / Bg.AbsoluteSize.X, 0, 1)
-            Fl.Size = UDim2.new(pct, 0, 1, 0)
-            H.Position = UDim2.new(pct, -4, 0.5, -4)
-            local nv = mn + (mx - mn) * pct
-            VL.Text = tostring(math.floor(nv))
-            if cb then pcall(cb, nv) end
         end
     end)
     return yPos + 30
 end
 
-local function Button(parent, text, yPos, cb)
-    local B = Create("TextButton", {
-        Text = " "..text, Font = Enum.Font.Gotham, TextSize = 9,
-        TextColor3 = Colors.Text, BackgroundColor3 = Colors.ElementBg,
-        BackgroundTransparency = 0.4, Size = UDim2.new(1, -4, 0, 24),
+local function Slider(parent, text, mn, mx, def, yPos, cb)
+    local F = Create("Frame", {
+        Size = UDim2.new(1, -8, 0, 28),
         Position = UDim2.new(0, 0, 0, yPos),
-        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = parent,
+        BackgroundColor3 = Colors.ElementBg,
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0, ZIndex = 4, Parent = parent,
     })
-    Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = B})
-    B.MouseButton1Click:Connect(function() PlayUISound(); if cb then pcall(cb) end end)
-    return yPos + 28
+    Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = F})
+    Create("TextLabel", {
+        Text = text, Font = Enum.Font.Gotham, TextSize = 10,
+        TextColor3 = Colors.Text, BackgroundTransparency = 1,
+        Position = UDim2.new(0, 8, 0, 3),
+        Size = UDim2.new(0.5, -12, 0.5, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 5, Parent = F,
+    })
+    local VL = Create("TextLabel", {
+        Text = tostring(def), Font = Enum.Font.Code, TextSize = 10,
+        TextColor3 = Colors.Accent, BackgroundTransparency = 1,
+        Position = UDim2.new(0.55, 0, 0, 3),
+        Size = UDim2.new(0, 28, 0.5, 0),
+        TextXAlignment = Enum.TextXAlignment.Center,
+        ZIndex = 5, Parent = F,
+    })
+    local Bg = Create("Frame", {
+        Size = UDim2.new(0.38, -8, 0, 4),
+        Position = UDim2.new(0.58, 0, 0.7, 0),
+        BackgroundColor3 = Colors.ToggleOff,
+        BorderSizePixel = 0, ZIndex = 5, Parent = F,
+    })
+    Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = Bg})
+    local Fl = Create("Frame", {
+        Size = UDim2.new((def - mn) / (mx - mn), 0, 1, 0),
+        BackgroundColor3 = Colors.Accent, BorderSizePixel = 0,
+        ZIndex = 6, Parent = Bg,
+    })
+    Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = Fl})
+    local H = Create("Frame", {
+        Size = UDim2.new(0, 10, 0, 10),
+        Position = UDim2.new((def - mn) / (mx - mn), -5, 0.5, -5),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0, ZIndex = 7, Parent = Bg,
+    })
+    Create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = H})
+    local drag = false
+    Bg.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true
+        end
+    end)
+    SV.U.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            drag = false
+        end
+    end)
+    SV.U.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local pct = math.clamp((i.Position.X - Bg.AbsolutePosition.X) / Bg.AbsoluteSize.X, 0, 1)
+            Fl.Size = UDim2.new(pct, 0, 1, 0)
+            H.Position = UDim2.new(pct, -5, 0.5, -5)
+            local nv = mn + (mx - mn) * pct
+            VL.Text = tostring(math.floor(nv))
+            if cb then pcall(cb, nv) end
+        end
+    end)
+    return yPos + 32
 end
 
--- ═══ HITMARKER + KILLFEED ═══
+local function Button(parent, text, yPos, cb)
+    local B = Create("TextButton", {
+        Text = " "..text,
+        Font = Enum.Font.GothamMedium, TextSize = 10,
+        TextColor3 = Colors.Text, BackgroundColor3 = Colors.ElementBg,
+        BackgroundTransparency = 0.3,
+        Size = UDim2.new(1, -8, 0, 26),
+        Position = UDim2.new(0, 0, 0, yPos),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        AutoButtonColor = true,
+        ZIndex = 4, Parent = parent,
+    })
+    Create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = B})
+    B.MouseButton1Click:Connect(function()
+        PlayUISound()
+        if cb then pcall(cb) end
+    end)
+    return yPos + 30
+end
+
+-- ═══ HITMARKER ═══
 local Hitmarker = {frame = nil, lastShow = 0}
 Hitmarker.frame = Create("Frame", {
-    Size = UDim2.new(0, 16, 0, 16), AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, ZIndex = 200, Parent = UI.Screen,
+    Size = UDim2.new(0, 16, 0, 16),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundTransparency = 1, BorderSizePixel = 0,
+    Visible = false, ZIndex = 200, Parent = UI.Screen,
 })
 for _, rot in ipairs({45, -45, 135, -135}) do
-    Create("Frame", {Size = UDim2.new(0, 1, 0, 7), Position = UDim2.new(0.5, -0.5, 0.5, -3.5), BackgroundColor3 = Color3.fromRGB(255, 60, 60), BorderSizePixel = 0, Parent = Hitmarker.frame}).Rotation = rot
+    Create("Frame", {
+        Size = UDim2.new(0, 1, 0, 7),
+        Position = UDim2.new(0.5, -0.5, 0.5, -3.5),
+        BackgroundColor3 = Color3.fromRGB(255, 60, 60),
+        BorderSizePixel = 0, Parent = Hitmarker.frame,
+    }).Rotation = rot
 end
 function Hitmarker:show()
     if not State.HitmarkerEnabled then return end
@@ -516,7 +681,8 @@ local function applyESP(p)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then destroyESP(p); return end
     local role = getRole(p)
-    local color = role == "Murderer" and Color3.fromRGB(255, 0, 0) or (role == "Sheriff" and Color3.fromRGB(0, 100, 255) or Color3.fromRGB(0, 255, 0))
+    local color = role == "Murderer" and Color3.fromRGB(255, 0, 0)
+        or (role == "Sheriff" and Color3.fromRGB(0, 100, 255) or Color3.fromRGB(0, 255, 0))
     local e = ESPCache[p]; if not e then e = {}; ESPCache[p] = e end
     if not e.hl or e.hl.Parent ~= char then
         if e.hl then pcall(function() e.hl:Destroy() end) end
@@ -549,7 +715,9 @@ end
 SV.P.PlayerRemoving:Connect(function(p) destroyESP(p) end)
 task.spawn(function()
     while task.wait(0.1) do
-        if State.ESP then for _, p in ipairs(CACHE.PlayersList) do applyESP(p) end end
+        if State.ESP then
+            for _, p in ipairs(CACHE.PlayersList) do applyESP(p) end
+        end
     end
 end)
 
@@ -587,7 +755,11 @@ local function findWeapon()
     local gun, knife
     if bp then
         gun = bp:FindFirstChild("Gun"); knife = bp:FindFirstChild("Knife")
-        if not gun then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") and t.Name:lower():find("gun") then gun = t; break end end end
+        if not gun then
+            for _, t in ipairs(bp:GetChildren()) do
+                if t:IsA("Tool") and t.Name:lower():find("gun") then gun = t; break end
+            end
+        end
     end
     if eq and eq.Name:lower():find("gun") then return eq end
     if gun then return gun end
@@ -614,7 +786,7 @@ local function findMurderer()
                 local hum = char:FindFirstChildOfClass("Humanoid")
                 if hum and hum.Health > 0 then
                     local d = (hrp.Position - origin).Magnitude
-                    if d < bestD then bestD = d; best = {player = p, char = char, hum = hum, dist = d} end
+                    if d < bestD then bestD = d; best = {player=p, char=char, hum=hum, dist=d} end
                 end
             end
         end
@@ -638,7 +810,6 @@ local function startFlick(target, triggeredBy)
         local hum = target.hum
         if not hum:GetAttribute("HBKill") then
             hum:SetAttribute("HBKill", true)
-            local pl = target.player
             hum.Died:Connect(function()
                 if tick() - flick.startTick < 3 then
                     flick.killed = true; flick.hitStreak = flick.hitStreak + 1
@@ -649,6 +820,7 @@ local function startFlick(target, triggeredBy)
     end
     Cam.CameraType = Enum.CameraType.Scriptable
     Cam.CameraSubject = nil
+    print("[FLICK] Iniciado em "..target.player.Name)
 end
 
 local function endFlick()
@@ -657,12 +829,10 @@ local function endFlick()
     flick.returnStartCF = Cam.CFrame; flick.returnTargetCF = flick.originCF
 end
 
-Cam = workspace.CurrentCamera
 SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, function(dt)
     if not Cam or not Cam.Parent then Cam = workspace.CurrentCamera end
     if not Cam then return end
 
-    -- RETURN PHASE
     if flick.phase == "return" and flick.active then
         local elapsed = tick() - flick.returnStartTick
         local t = math.clamp(elapsed / flick.returnDur, 0, 1)
@@ -687,10 +857,9 @@ SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, func
         return
     end
 
-    -- NÃO ATIVO: procura trigger
     if not flick.active then
         if tick() - flick.lastFlickEnd < flick.cooldown then return end
-        local manualKey = State.AutoFlick and (flick.keyHeld or SV.U:IsKeyDown(State.AutoFlickKey))
+        local manualKey = State.AutoFlick and flick.keyHeld
         if manualKey then
             local t = findMurderer()
             if t then flick.lastFlickEnd = tick(); startFlick(t, "manual") end
@@ -710,7 +879,7 @@ SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, func
                                 local dist = (hrp.Position - lpHrp.Position).Magnitude
                                 if dist < 500 then
                                     flick.lastFlickEnd = tick()
-                                    startFlick({player = p, char = char, hum = hum, dist = dist}, "trigger")
+                                    startFlick({player=p, char=char, hum=hum, dist=dist}, "trigger")
                                     break
                                 end
                             end
@@ -722,7 +891,7 @@ SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, func
         return
     end
 
-    if flick.triggeredBy == "manual" and not (flick.keyHeld or SV.U:IsKeyDown(State.AutoFlickKey)) then
+    if flick.triggeredBy == "manual" and not flick.keyHeld then
         endFlick(); return
     end
 
@@ -737,11 +906,9 @@ SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, func
     if not aimPos then endFlick(); return end
     flick.aimPos = aimPos
 
-    -- SNAP
     if flick.phase == "snap" then
         local elapsed = tick() - flick.startTick
-        local roughDur = flick.snapDur * 0.7
-        local fineDur = flick.snapDur * 0.3
+        local roughDur = flick.snapDur * 0.7; local fineDur = flick.snapDur * 0.3
         if elapsed < roughDur then
             local t = math.clamp(elapsed / roughDur, 0, 1)
             local eased = 1 - (1 - t)^4
@@ -757,7 +924,6 @@ SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, func
         return
     end
 
-    -- HOLD
     if flick.phase == "hold" then
         Cam.CameraType = Enum.CameraType.Scriptable; Cam.CameraSubject = nil
         Cam.CFrame = CFrame.lookAt(camPos, aimPos)
@@ -772,7 +938,10 @@ SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, func
             if eq then
                 flick.shotsFired = 1; flick.hpBefore = hum.Health
                 local ok = Silent_fire(eq, aimPos)
-                if ok then PlayAimBeep(); flick.phase = "verify"; flick.verifyStart = tick() end
+                if ok then
+                    print("[SHOT] dist:"..math.floor(dist).."m angle:"..math.floor(angle).."deg")
+                    flick.phase = "verify"; flick.verifyStart = tick()
+                end
             end
             return
         end
@@ -782,7 +951,6 @@ SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, func
         return
     end
 
-    -- VERIFY
     if flick.phase == "verify" then
         Cam.CFrame = CFrame.lookAt(Cam.CFrame.Position, aimPos)
         if hum.Health <= 0 then flick.killed = true end
@@ -806,7 +974,7 @@ SV.R:BindToRenderStep("HBAutoFlick", Enum.RenderPriority.Camera.Value + 10, func
 end)
 
 -- ═══════════════════════════════════════════════════════════
--- UI ABRIR/FECHAR (INSERT)
+-- ⭐ ABRIR/FECHAR MENU — BULLETPROOF
 -- ═══════════════════════════════════════════════════════════
 UI.Hide = function()
     UI.Main.Visible = false
@@ -816,7 +984,7 @@ UI.Hide = function()
 end
 UI.Show = function()
     UI.Main.Visible = true
-    UI.Blur.Size = 12
+    UI.Blur.Size = 10
     State.GUI_Visible = true
     print("[HB] Menu ABERTO")
 end
@@ -826,36 +994,81 @@ CloseBtn.MouseButton1Click:Connect(function()
     UI.Hide()
 end)
 
--- INPUT GLOBAL
-SV.U.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    -- INSERT = toggle menu
-    if input.KeyCode == Enum.KeyCode.Insert then
-        if State.GUI_Visible then UI.Hide() else UI.Show() end
-    end
-    -- Q = auto flick (segurar)
-    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == State.AutoFlickKey then
-        flick.keyHeld = true
-    end
-    -- F1 = panic
-    if input.KeyCode == Enum.KeyCode.F1 then
-        State.AutoFlick = false; State.TriggerBot = false; State.ESP = false
-        for pl in pairs(ESPCache) do destroyESP(pl) end
-    end
+-- ⭐ ContextActionService (mais confiável para Insert)
+local ok_cas = pcall(function()
+    SV.CAS:BindAction("HBToggleMenu", function(actionName, inputState)
+        if inputState == Enum.UserInputState.Begin then
+            if State.GUI_Visible then UI.Hide() else UI.Show() end
+        end
+        return Enum.ContextActionResult.Pass
+    end, false, Enum.KeyCode.Insert)
 end)
-SV.U.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == State.AutoFlickKey then
-        flick.keyHeld = false
+if ok_cas then print("[HB] ContextActionService Insert OK") else print("[HB] CAS falhou, usando loop") end
+
+-- ⭐ Loop de fallback para Insert (caso CAS não funcione)
+task.spawn(function()
+    local lastInsert = false
+    while task.wait(0.05) do
+        local down = SV.U:IsKeyDown(Enum.KeyCode.Insert)
+        if down and not lastInsert then
+            if State.GUI_Visible then UI.Hide() else UI.Show() end
+        end
+        lastInsert = down
     end
 end)
 
--- DRAG
+-- ⭐ Loop para Q (auto flick)
+task.spawn(function()
+    while task.wait(0.03) do
+        local qDown = SV.U:IsKeyDown(Enum.KeyCode.Q)
+        flick.keyHeld = qDown
+    end
+end)
+
+-- ⭐ F1 = panic
+task.spawn(function()
+    local lastF1 = false
+    while task.wait(0.05) do
+        local down = SV.U:IsKeyDown(Enum.KeyCode.F1)
+        if down and not lastF1 then
+            State.AutoFlick = false; State.TriggerBot = false; State.ESP = false
+            for pl in pairs(ESPCache) do destroyESP(pl) end
+            print("[HB] PANIC")
+        end
+        lastF1 = down
+    end
+end)
+
+-- ⭐ BOTÃO FLUTUANTE (pra quem tá no celular)
+local Fab = Create("TextButton", {
+    Text = "MENU",
+    Font = Enum.Font.GothamBold, TextSize = 11,
+    TextColor3 = Colors.Text, BackgroundColor3 = Colors.Accent,
+    BorderSizePixel = 0,
+    Size = UDim2.new(0, 50, 0, 30),
+    Position = UDim2.new(0, 10, 0.3, 0),
+    AutoButtonColor = true, ZIndex = 250,
+    Parent = UI.Screen,
+})
+Create("UICorner", {CornerRadius = UDim.new(0, 15), Parent = Fab})
+Create("UIStroke", {Color = Color3.fromRGB(255,255,255), Thickness = 1, Transparency = 0.5, Parent = Fab})
+Fab.MouseButton1Click:Connect(function()
+    PlayUISound(1.3)
+    if State.GUI_Visible then UI.Hide() else UI.Show() end
+end)
+
+print("[HB] Botao flutuante criado em (10, 30%)")
+
+-- ═══ DRAG ═══
 local dragging, dragStart, startPos
-TBBG.InputBegan:Connect(function(i)
+Header.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
         dragging = true; dragStart = i.Position; startPos = UI.Main.Position
-        local conn; conn = i.Changed:Connect(function()
-            if i.UserInputState == Enum.UserInputState.End then dragging = false; conn:Disconnect() end
+        local conn
+        conn = i.Changed:Connect(function()
+            if i.UserInputState == Enum.UserInputState.End then
+                dragging = false; conn:Disconnect()
+            end
         end)
     end
 end)
@@ -868,9 +1081,18 @@ end)
 
 -- ═══ TABS ═══
 local function buildFlickTab()
-    local p = Create("ScrollingFrame", {Name = "Flick", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = Colors.Accent, Visible = false, ZIndex = 3, Parent = UI.ContentArea})
+    local p = Create("ScrollingFrame", {
+        Name = "Flick",
+        Size = UDim2.new(1, -6, 1, -6),
+        Position = UDim2.new(0, 3, 0, 3),
+        BackgroundTransparency = 1, ScrollBarThickness = 2,
+        ScrollBarImageColor3 = Colors.Accent,
+        CanvasSize = UDim2.new(0, 0, 0, 500),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false, ZIndex = 4,
+        Parent = UI.ContentArea,
+    })
     UI.TabContents["Flick"] = p
-    p.CanvasSize = UDim2.new(0, 0, 0, 500); p.AutomaticCanvasSize = Enum.AutomaticSize.Y
     local y = 2
     y = Section(p, "AUTO FLICK", y)
     y = Toggle(p, "Auto Flick (Q)", y, true, function(s) State.AutoFlick = s end)
@@ -885,49 +1107,85 @@ local function buildFlickTab()
     y = Slider(p, "Return ms", 30, 300, 100, y, function(v) flick.returnDur = v / 100 end)
     y = Slider(p, "Cooldown", 50, 500, 150, y, function(v) flick.cooldown = v / 100 end)
     y = Section(p, "PRECISAO", y)
-    y = Slider(p, "Align graus", 1, 15, 4, y, function(v) flick.alignTolerance = math.floor(v) end)
+    y = Slider(p, "Align", 1, 15, 4, y, function(v) flick.alignTolerance = math.floor(v) end)
     y = Slider(p, "Retries", 0, 3, 2, y, function(v) flick.retries = math.floor(v) end)
-    y = Slider(p, "Restore ms", 50, 300, 120, y, function(v) Silent.restoreDelay = v / 1000 end)
+    y = Slider(p, "Restore", 50, 300, 120, y, function(v) Silent.restoreDelay = v / 1000 end)
     y = Button(p, "APLICAR PIPELINE", y, function()
-        State.AutoFlick = true; State.TriggerBot = true; State.AIEnabled = true; Silent.enabled = true
+        State.AutoFlick = true; State.TriggerBot = true
+        State.AIEnabled = true; Silent.enabled = true
         flick.alignTolerance = 4; flick.retries = 2; flick.cooldown = 0.15
-        ShowToast("Pipeline ON", "success")
+        print("[HB] Pipeline ativado")
     end)
+    y = Button(p, "Resetar IA", y, function() Histories = {}; print("[HB] IA resetada") end)
 end
 
 local function buildESPTab()
-    local p = Create("ScrollingFrame", {Name = "ESP", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = Colors.Accent, Visible = false, ZIndex = 3, Parent = UI.ContentArea})
+    local p = Create("ScrollingFrame", {
+        Name = "ESP",
+        Size = UDim2.new(1, -6, 1, -6),
+        Position = UDim2.new(0, 3, 0, 3),
+        BackgroundTransparency = 1, ScrollBarThickness = 2,
+        ScrollBarImageColor3 = Colors.Accent,
+        CanvasSize = UDim2.new(0, 0, 0, 300),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false, ZIndex = 4,
+        Parent = UI.ContentArea,
+    })
     UI.TabContents["ESP"] = p
-    p.CanvasSize = UDim2.new(0, 0, 0, 300)
     local y = 2
     y = Section(p, "ESP", y)
-    y = Toggle(p, "ESP Ativo", y, false, function(s) State.ESP = s; if not s then for pl in pairs(ESPCache) do destroyESP(pl) end end end)
+    y = Toggle(p, "ESP Ativo", y, false, function(s)
+        State.ESP = s
+        if not s then for pl in pairs(ESPCache) do destroyESP(pl) end end
+    end)
     y = Toggle(p, "Nome", y, true, function(s) State.ESPName = s end)
 end
 
 local function buildVisualTab()
-    local p = Create("ScrollingFrame", {Name = "Visual", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = Colors.Accent, Visible = false, ZIndex = 3, Parent = UI.ContentArea})
+    local p = Create("ScrollingFrame", {
+        Name = "Visual",
+        Size = UDim2.new(1, -6, 1, -6),
+        Position = UDim2.new(0, 3, 0, 3),
+        BackgroundTransparency = 1, ScrollBarThickness = 2,
+        ScrollBarImageColor3 = Colors.Accent,
+        CanvasSize = UDim2.new(0, 0, 0, 300),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false, ZIndex = 4,
+        Parent = UI.ContentArea,
+    })
     UI.TabContents["Visual"] = p
-    p.CanvasSize = UDim2.new(0, 0, 0, 300)
     local y = 2
     y = Section(p, "VISUAL", y)
     y = Toggle(p, "Fullbright", y, false, function(s)
-        if s then SV.L.Ambient = Color3.fromRGB(255, 255, 255); SV.L.Brightness = 2
-        else SV.L.Ambient = Color3.fromRGB(70, 70, 70); SV.L.Brightness = 1 end
+        if s then SV.L.Ambient = Color3.fromRGB(255,255,255); SV.L.Brightness = 2
+        else SV.L.Ambient = Color3.fromRGB(70,70,70); SV.L.Brightness = 1 end
     end)
     y = Section(p, "HUD", y)
     y = Toggle(p, "Hitmarker", y, true, function(s) State.HitmarkerEnabled = s end)
 end
 
 local function buildConfigTab()
-    local p = Create("ScrollingFrame", {Name = "Config", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, ScrollBarThickness = 2, ScrollBarImageColor3 = Colors.Accent, Visible = false, ZIndex = 3, Parent = UI.ContentArea})
+    local p = Create("ScrollingFrame", {
+        Name = "Config",
+        Size = UDim2.new(1, -6, 1, -6),
+        Position = UDim2.new(0, 3, 0, 3),
+        BackgroundTransparency = 1, ScrollBarThickness = 2,
+        ScrollBarImageColor3 = Colors.Accent,
+        CanvasSize = UDim2.new(0, 0, 0, 300),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false, ZIndex = 4,
+        Parent = UI.ContentArea,
+    })
     UI.TabContents["Config"] = p
-    p.CanvasSize = UDim2.new(0, 0, 0, 300)
     local y = 2
     y = Section(p, "GERAL", y)
     y = Toggle(p, "Sons UI", y, true, function(s) State.UI_Sounds = s end)
     y = Button(p, "Fechar Menu", y, function() UI.Hide() end)
-    y = Button(p, "Reabrir (Insert)", y, function() UI.Show() end)
+    y = Button(p, "Info", y, function()
+        print("Insert = Abre/fecha")
+        print("Q = Auto Flick")
+        print("F1 = Panic")
+    end)
 end
 
 buildFlickTab()
@@ -936,12 +1194,7 @@ buildVisualTab()
 buildConfigTab()
 UI.switchTab("Flick")
 
--- Toast simples
-function ShowToast(msg, type)
-    print("[HB TOAST] "..msg)
-end
-
--- ═══ ANTI-CHEAT ═══
+-- ═══ ANTI-FLING ═══
 task.spawn(function()
     while task.wait(0.1) do
         pcall(function()
@@ -955,18 +1208,22 @@ task.spawn(function()
     end
 end)
 
--- ═══ HUD HEARTBEAT ═══
+-- ═══ HUD ═══
 local statFrame = 0
 SV.R.Heartbeat:Connect(function(dt)
     statFrame = statFrame + dt
     if statFrame >= 1 then
         statFrame = 0
         local ping = math.floor(LP:GetNetworkPing() * 1000)
-        UI.StatusText.Text = string.format("%s | P:%d | Q=Flick Insert=Menu", flick.phase, ping)
+        UI.StatusText.Text = string.format("%s | P:%d | Q=Flick Ins=Menu", flick.phase, ping)
     end
 end)
 
-print("[HELLBORN v22.5] Carregado!")
-print("  Insert = Abre/Fecha menu")
-print("  Q = Auto Flick")
-print("  F1 = Panic")
+print("═══════════════════════════════════════")
+print("  HELLBORN v22.6 CARREGADO")
+print("  ═══════════════════════════════════")
+print("  Insert   = Abre/Fecha menu")
+print("  Q        = Auto Flick (segurar)")
+print("  F1       = Panic")
+print("  Botao no canto esquerdo = Menu")
+print("═══════════════════════════════════════")
