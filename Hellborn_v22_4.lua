@@ -1,14 +1,12 @@
 --==============================================================
--- HELLBORN v9.1 SUPREME
--- Otimizações supremas aplicadas:
---  1. HB_Create sem pcall          6. Cache.List em vez de GetPlayers()
---  2. tick() = os.clock()          7. Loops wait() consolidados em 1
---  3. Hst com arrays paralelos     8. GetRole tool-first
---  4. KillLog circular O(1)        9. ESP em Heartbeat, Flick em Render
---  5. Pool de dots (Radar+Timeline)10. Enums UI em constantes locais
+-- HELLBORN v9.1 SUPREME — CORRIGIDO
+-- Correções aplicadas:
+--   FIX 1: SilentFire não derruba mais o personagem (sem HRP.CFrame)
+--   FIX 2: Auto-flick não cancela ao soltar tecla (atira no hold)
+--   FIX 3: S.RetryMiss definido no STATE (retry funciona)
 --==============================================================
 
---========= CONSTANTES (evita lookup em _ENV) =========
+--========= CONSTANTES =========
 local tick = os.clock
 local wait, spawn, delay = task.wait, task.spawn, task.delay
 local floor, sqrt, exp, log, cos, sin, atan2 = math.floor, math.sqrt, math.exp, math.log, math.cos, math.sin, math.atan2
@@ -22,21 +20,20 @@ local pairs_, ipairs_, next_ = pairs, ipairs, next
 local type, typeof, tostring, tonumber = type, typeof, tostring, tonumber
 local setmetatable = setmetatable
 
--- Enums UI cacheados
-local E_GOTHAM = Enum.Font.Gotham
-local E_GOTHAM_MED = Enum.Font.GothamMedium
-local E_GOTHAM_BOLD = Enum.Font.GothamBold
+local E_GOTHAM       = Enum.Font.Gotham
+local E_GOTHAM_MED   = Enum.Font.GothamMedium
+local E_GOTHAM_BOLD  = Enum.Font.GothamBold
 local E_GOTHAM_BLACK = Enum.Font.GothamBlack
-local E_CODE = Enum.Font.Code
-local E_TXT_LEFT = Enum.TextXAlignment.Left
-local E_TXT_RIGHT = Enum.TextXAlignment.Right
-local E_TXT_TOP = Enum.TextYAlignment.Top
-local E_MOUSE1 = Enum.UserInputType.MouseButton1
-local E_MOUSEMOVE = Enum.UserInputType.MouseMovement
-local E_KEYBOARD = Enum.UserInputType.Keyboard
-local E_CAM_SCRIPT = Enum.CameraType.Scriptable
-local E_AUTO_Y = Enum.AutomaticSize.Y
-local E_BACK = Enum.EasingStyle.Back
+local E_CODE         = Enum.Font.Code
+local E_TXT_LEFT     = Enum.TextXAlignment.Left
+local E_TXT_RIGHT    = Enum.TextXAlignment.Right
+local E_TXT_TOP      = Enum.TextYAlignment.Top
+local E_MOUSE1       = Enum.UserInputType.MouseButton1
+local E_MOUSEMOVE    = Enum.UserInputType.MouseMovement
+local E_KEYBOARD     = Enum.UserInputType.Keyboard
+local E_CAM_SCRIPT   = Enum.CameraType.Scriptable
+local E_AUTO_Y       = Enum.AutomaticSize.Y
+local E_BACK         = Enum.EasingStyle.Back
 
 --========= SERVIÇOS =========
 local Players       = game:GetService("Players")
@@ -59,10 +56,10 @@ local UIS_InputEnded   = UIS.InputEnded
 local UIS_InputChanged = UIS.InputChanged
 
 --========= IDENTIDADE =========
-local HB_V      = "v9.1"
-local HB_SERIAL = tostring(random(10000000, 99999999))
-local HB_TITLE  = "HELLBORN"
-local HB_X      = "HB_" .. random(10000, 99999) .. "_"
+local HB_V       = "v9.1"
+local HB_SERIAL  = tostring(random(10000000, 99999999))
+local HB_TITLE   = "HELLBORN"
+local HB_X       = "HB_" .. random(10000, 99999) .. "_"
 local HB_HIST_SZ = 60
 local KILLLOG_SZ = 100
 
@@ -76,7 +73,7 @@ for _, o in ipairs_(Lighting:GetChildren()) do
     if o:IsA("BlurEffect") then o:Destroy() end
 end
 
---========= HELPERS (SEM PCALL) =========
+--========= HELPERS =========
 function HB_Create(cls, props, children)
     local i = Instance.new(cls)
     local par
@@ -162,6 +159,9 @@ S.PostKillDelay=true S.PostKillDelayMs=400 S.ThreatTrajectory=true
 S.SmartTarget=true S.NNRate=0.01 S.PreAim=true S.StickyAim=true
 S.StickyAimStrength=0.30 S.ProgressiveFlick=true S.RSIEnabled=true
 
+-- ✅ FIX 3: RetryMiss definido (antes era nil e o retry nunca disparava)
+S.RetryMiss = true
+
 S.REV_AI = {meta=true,nas=true,cloning=true,selfPlay=true,worldModel=true,
     activeInf=true,transformer=true,moe=true,uncert=true,causal=true,
     counterfact=true,adversarial=true,transfer=true,federated=true,lifelong=true,
@@ -221,7 +221,7 @@ RevMad = {twin={}, recursive={gens=0}}
 
 NNReal = {inputN=8, hiddenN=6, outputN=3, W1={}, b1={}, W2={}, b2={}, lr=0.01, trained=0}
 
---========= HST FACTORY (arrays paralelos) =========
+--========= HST FACTORY =========
 function HB_GetH(p)
     local h = Hst[p]
     if not h then
@@ -246,6 +246,7 @@ function HB_KalmanPred(k, dt)
     local x = k.x
     return newV3(x[1]+x[4]*dt, x[2]+x[5]*dt, x[3]+x[6]*dt)
 end
+
 --========= REDE NEURAL =========
 function HB_NNInit()
     NNReal.W1={} NNReal.b1={} NNReal.W2={} NNReal.b2={}
@@ -408,7 +409,7 @@ function HB_FindTool(player)
     return nil
 end
 
---========= GETROLE ULTRA-OTIMIZADO (tool-first) =========
+--========= GETROLE =========
 local RoleCache     = setmetatable({}, {__mode = "k"})
 local RoleCacheTime = 0
 local ROLE_TTL      = 0.25
@@ -427,7 +428,6 @@ function GetRole(p)
     local role = "Innocent"
     local ch = Cache.Chars[p]
     if ch and ch.Parent then
-        -- 1) Tool check primeiro (mais rápido, sem pcall)
         local tool = ch:FindFirstChildOfClass("Tool")
         if not tool then
             local bag = p:FindFirstChild("Backpack")
@@ -450,7 +450,6 @@ function GetRole(p)
                 end
             end
         end
-        -- 2) Attribute check (raro chegar aqui)
         local hum = ch:FindFirstChildOfClass("Humanoid")
         if hum and hum.Health > 0 then
             for i = 1, 6 do
@@ -470,7 +469,7 @@ function GetRole(p)
     return role
 end
 
---========= HB_UpdateH CIRCULAR (zero alocação) =========
+--========= HB_UpdateH =========
 function HB_UpdateH(p, pos, hum)
     local h = HB_GetH(p)
     local now = tick()
@@ -496,7 +495,6 @@ function HB_UpdateH(p, pos, hum)
     pr = x[2]+x[5]*dt; e = py-pr; x[2]=pr+gain*e; x[5]=x[5]+(e/dt)*0.4
     pr = x[3]+x[6]*dt; e = pz-pr; x[3]=pr+gain*e; x[6]=x[6]+(e/dt)*0.4
 
-    -- Sample circular
     local idx = h.spHead + 1
     if idx > HB_HIST_SZ then idx = 1 end
     h.spHead = idx
@@ -564,7 +562,7 @@ function HB_UpdateH(p, pos, hum)
     end
 end
 
---========= FPS + TRACKING (Heartbeat consolidado) =========
+--========= FPS + TRACKING =========
 local _fpsFrameCount = 0
 local TrackAccum = 0
 local TRACK_INTERVAL = 0.05
@@ -604,8 +602,7 @@ RS_Heartbeat:Connect(function(dt)
         end
     end
 end)
-
---========= ARMAS (equip/speed/hitscan) =========
+--========= ARMAS =========
 function FindWeapon()
     if not LP.Character then return nil end
     local eq = LP.Character:FindFirstChildOfClass("Tool")
@@ -648,7 +645,7 @@ function IsWeaponOnCooldown(tool)
     return last ~= nil and (tick() - last) < 0.3
 end
 
---========= SILENTFIRE =========
+--========= SILENTFIRE (CORRIGIDO — não derruba mais o personagem) =========
 function SilentFire(tool, aimPos)
     if not tool or not aimPos then return false end
 
@@ -664,7 +661,8 @@ function SilentFire(tool, aimPos)
 
     local now = tick()
     if S.AntiFlickBlock and now < AntiFlickGuard.backoffUntil then return false end
-    if now - Sil.lastFire < 0.2 then return false end
+    -- ✅ reduzido de 0.2 para 0.12 (permite disparo mais rápido em retries)
+    if now - Sil.lastFire < 0.12 then return false end
     Sil.lastFire = now
 
     if S.FakeMiss and random() < 0.01 then
@@ -675,22 +673,50 @@ function SilentFire(tool, aimPos)
 
     local handle = tool:FindFirstChild("Handle")
     local lpCh = LP.Character
-    if not handle or not lpCh then return false end
+    if not lpCh then return false end
 
-    local hrp = lpCh:FindFirstChild("HumanoidRootPart")
+    local hum  = lpCh:FindFirstChildOfClass("Humanoid")
     local head = lpCh:FindFirstChild("Head")
 
-    if hrp then
-        local flat = newV3(aimPos.X, hrp.Position.Y, aimPos.Z)
-        local d = flat - hrp.Position
-        if d.Magnitude > 0.1 then hrp.CFrame = lookAt(hrp.Position, flat) end
+    -- ✅ FIX 1: NÃO mexer em HRP.CFrame — era isso que fazia o boneco CAIR.
+    -- Guardamos o AutoRotate para restaurar depois.
+    local oldAuto = hum and hum.AutoRotate
+    if hum then hum.AutoRotate = false end
+
+    -- Só apontamos o Handle (a arma) e a Head (para hitscan)
+    if handle then
+        handle.CFrame = lookAt(handle.Position, aimPos)
     end
     if head then
-        pcall(function() head.CFrame = lookAt(head.Position, aimPos) end)
+        pcall(function()
+            head.CFrame = lookAt(head.Position, aimPos)
+        end)
     end
-    handle.CFrame = lookAt(handle.Position, aimPos)
+
+    -- Compatibilidade MM2: força mouse.Target para o alvo
+    local mouse = LP:GetMouse()
+    local fakePart
+    if mouse then
+        pcall(function()
+            fakePart = Instance.new("Part")
+            fakePart.Size = Vector3.new(0.1,0.1,0.1)
+            fakePart.Transparency = 1
+            fakePart.CanCollide = false
+            fakePart.Anchored = true
+            fakePart.CFrame = CFrame.new(aimPos)
+            fakePart.Parent = workspace
+            mouse.Target = fakePart
+        end)
+    end
 
     local ok = pcall(function() tool:Activate() end)
+
+    -- ✅ Restaura AutoRotate
+    if hum then hum.AutoRotate = oldAuto end
+    if fakePart then
+        task.delay(0.05, function() if fakePart then fakePart:Destroy() end end)
+    end
+
     if ok then
         Weapon.lastFireTime[tool] = now
         AntiFlickGuard.fails = 0
@@ -1311,6 +1337,7 @@ function LogMiss(victim)
     s.time = tick(); s.victim = victim; s.dist = 0; s.miss = true
     S.Streak = 0
 end
+
 --========= COMPUTE AIM =========
 function ComputeAim(tp, tch, camPos, tool)
     if not tch or not tch.Parent then return nil end
@@ -1514,8 +1541,7 @@ local function TimelineGetDot()
     end
     return dot
 end
-
---========= RENDERSTEPPED — APENAS FLICK =========
+--========= RENDERSTEPPED — FLICK (CORRIGIDO) =========
 RS_Render:Connect(function(dt)
     if not Flick then return end
 
@@ -1548,11 +1574,9 @@ RS_Render:Connect(function(dt)
 
     if not Flick.active then return end
 
-    if Flick.triggeredBy == "manual"
-       and not (Flick.keyHeld or UIS:IsKeyDown(S.FlickKey)) then
-        EndFlick()
-        return
-    end
+    -- ✅ FIX 2: NÃO cancela mais o flick ao soltar a tecla.
+    -- O flick precisa completar snap -> hold -> verify para atirar.
+    -- Só cancelamos se o alvo morrer/perder (checagens abaixo).
 
     local tp, ch, hum = Flick.targetPlayer, Flick.targetChar, Flick.targetHumanoid
     if not tp or not tp.Parent or not ch or not ch.Parent
@@ -1633,6 +1657,7 @@ RS_Render:Connect(function(dt)
             return
         end
         if tick() - Flick.verifyStart >= Flick.verifyWait then
+            -- ✅ FIX 3: S.RetryMiss agora está definido, retry funciona
             if S.RetryMiss and Flick.retriesLeft > 0 then
                 Flick.retriesLeft = Flick.retriesLeft - 1
                 Flick.phase = "snap"
@@ -1649,7 +1674,7 @@ RS_Render:Connect(function(dt)
     end
 end)
 
---========= HEARTBEAT — ESP/Chams/Radar/Timeline/Crosshair (menos prioridade) =========
+--========= HEARTBEAT — ESP / Chams / Radar / Timeline / Crosshair =========
 RS_Heartbeat:Connect(function(dt)
     local players = Cache.List
     local nPlayers = #players
@@ -1660,7 +1685,6 @@ RS_Heartbeat:Connect(function(dt)
     local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local myPos = myHrp and myHrp.Position
 
-    -- Roles por frame (cache local)
     local roles = {}
     for i = 1, nPlayers do
         local pl = players[i]
@@ -1713,7 +1737,6 @@ RS_Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Limpar cache de ESP de players que saíram
     for pl, e in pairs_(ESP_CACHE) do
         if not pl.Parent then
             if e.box then e.box:Destroy() end
@@ -1759,7 +1782,7 @@ RS_Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Radar com POOL
+    -- Radar
     if not S.Radar then
         if RADAR_FRAME.Visible then RADAR_FRAME.Visible = false end
         for i = 1, RadarDotUsed do RadarDotPool[i].Visible = false end
@@ -1794,7 +1817,7 @@ RS_Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Timeline com POOL
+    -- Timeline
     if not S.TimelinePredictor then
         for i = 1, TimelineDotUsed do TimelineDotPool[i].Visible = false end
         TimelineDotUsed = 0
@@ -1875,6 +1898,7 @@ end)
 UIS_InputEnded:Connect(function(input)
     if input.UserInputType == E_KEYBOARD and input.KeyCode == S.FlickKey then
         Flick.keyHeld = false
+        -- ✅ Não cancela mais o flick aqui — deixa ele terminar naturalmente.
     end
 end)
 
@@ -2111,7 +2135,6 @@ for i, tab in ipairs_(UI_TabsList) do
     btn.Activated:Connect(function() UI.switchTab(tab.name) end)
     UI.TabButtons[#UI.TabButtons+1] = btn
 end
-
 --========= COMPONENTES =========
 Cmp = {}
 
@@ -2384,6 +2407,7 @@ Cmp.Keybind = function(parent, opts, y)
     Cmp_reg(holder, text, nil)
     return y + h + 8
 end
+
 --========= POPULAR ABAS =========
 local P = UI.TabContents
 local y
@@ -3378,7 +3402,7 @@ MetaLearnUpdate = function(perf)
     end
 end
 
---========= TRIGGER BOT (Heartbeat + throttle) =========
+--========= TRIGGER BOT =========
 local TriggerAccum = 0
 local TRIGGER_INTERVAL = 1 / 30
 
@@ -3429,7 +3453,7 @@ RS_Heartbeat:Connect(function(dt)
     end
 end)
 
---========= LOOP CONSOLIDADO (era 7 callbacks, agora 1) =========
+--========= LOOP CONSOLIDADO =========
 local TaskAccum = {t01=0, t05=0, t1=0, t5=0, t10=0, t30=0}
 
 RS_Heartbeat:Connect(function(dt)
