@@ -5267,3 +5267,7 @@ print("🔧 Trigger fix — Respeita Flick")
 print("🔴 Trigger OFF por padrão")
 print("⌨️  F3 Rage · F4 Tryhard · F5 Rage Max")
 print("═══════════════════════════════════════════")
+HB_RageMeter.enabled=false
+HB_RageFrame.Visible=false
+S.ThreatLivePanel=false
+S.RSIOverlay=false
