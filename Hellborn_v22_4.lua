@@ -4211,3 +4211,325 @@ print("🎯 ESP: 🔴 Murderer | 🔵 Sheriff | 🟢 Innocent")
 print("⌨️  Insert = menu | Q = Flick | F1 = Panic | F2 = Legacy")
 print("💡 HBShowAllRoles() pra debug")
 print("═══════════════════════════════════════════")
+HB_RSI={
+    enabled=true,
+    generation=1,
+    population={},
+    popSize=20,
+    bestGenome=nil,
+    bestFitness=0,
+    mutations=0,
+    crossovers=0,
+    reverts=0,
+    killsSinceEvolve=0,
+    evolveEveryKills=5,
+    fitnessSamples={},
+    generationHistory={},
+    lastApplyTick=0,
+    applyInterval=1.0,
+    maxHistory=50,
+}
+
+function HB_RSI_NewGenome()
+    return {
+        snap=0.030+math.random()*0.040,
+        hold=0.100+math.random()*0.150,
+        verify=0.300+math.random()*0.400,
+        noise=0.00+math.random()*0.30,
+        aggression=0.3+math.random()*0.7,
+        fitness=0.5,
+        wins=0,
+        losses=0,
+        bornAt=tick(),
+    }
+end
+
+function HB_RSI_Init()
+    HB_RSI.population={}
+    for i=1,HB_RSI.popSize do
+        table.insert(HB_RSI.population,HB_RSI_NewGenome())
+    end
+    HB_RSI.bestGenome=HB_RSI.population[1]
+    HB_RSI.bestFitness=0.5
+end
+HB_RSI_Init()
+
+function HB_RSI_Mutate(genome,rate)
+    rate=rate or 0.15
+    local g={
+        snap=genome.snap,
+        hold=genome.hold,
+        verify=genome.verify,
+        noise=genome.noise,
+        aggression=genome.aggression,
+        fitness=0.5,
+        wins=0,
+        losses=0,
+        bornAt=tick(),
+    }
+    if math.random()<rate then
+        g.snap=math.clamp(g.snap+(math.random()-0.5)*0.015,0.015,0.150)
+    end
+    if math.random()<rate then
+        g.hold=math.clamp(g.hold+(math.random()-0.5)*0.060,0.050,0.400)
+    end
+    if math.random()<rate then
+        g.verify=math.clamp(g.verify+(math.random()-0.5)*0.150,0.200,1.000)
+    end
+    if math.random()<rate then
+        g.noise=math.clamp(g.noise+(math.random()-0.5)*0.100,0.000,0.500)
+    end
+    if math.random()<rate then
+        g.aggression=math.clamp(g.aggression+(math.random()-0.5)*0.200,0.100,1.000)
+    end
+    HB_RSI.mutations=HB_RSI.mutations+1
+    return g
+end
+
+function HB_RSI_Crossover(a,b)
+    local g={
+        snap=math.random()<0.5 and a.snap or b.snap,
+        hold=math.random()<0.5 and a.hold or b.hold,
+        verify=math.random()<0.5 and a.verify or b.verify,
+        noise=math.random()<0.5 and a.noise or b.noise,
+        aggression=math.random()<0.5 and a.aggression or b.aggression,
+        fitness=0.5,
+        wins=0,
+        losses=0,
+        bornAt=tick(),
+    }
+    HB_RSI.crossovers=HB_RSI.crossovers+1
+    return g
+end
+
+function HB_RSI_Fitness(genome)
+    local total=genome.wins+genome.losses
+    if total==0 then
+        return 0.5
+    end
+    return genome.wins/total
+end
+
+function HB_RSI_Evolve()
+    table.sort(HB_RSI.population,function(a,b)
+        return HB_RSI_Fitness(a)>HB_RSI_Fitness(b)
+    end)
+    local elite=math.floor(HB_RSI.popSize*0.2)
+    local newPop={}
+    for i=1,elite do
+        table.insert(newPop,HB_RSI.population[i])
+    end
+    while #newPop<HB_RSI.popSize do
+        local a=HB_RSI.population[math.random(1,elite)]
+        local b=HB_RSI.population[math.random(1,elite)]
+        local child=HB_RSI_Crossover(a,b)
+        child=HB_RSI_Mutate(child,0.20)
+        table.insert(newPop,child)
+    end
+    HB_RSI.population=newPop
+    local oldBest=HB_RSI.bestFitness
+    HB_RSI.bestGenome=HB_RSI.population[1]
+    HB_RSI.bestFitness=HB_RSI_Fitness(HB_RSI.bestGenome)
+    if HB_RSI.bestFitness<oldBest then
+        HB_RSI.reverts=HB_RSI.reverts+1
+    end
+    HB_RSI.generation=HB_RSI.generation+1
+    table.insert(HB_RSI.generationHistory,{
+        gen=HB_RSI.generation,
+        fitness=HB_RSI.bestFitness,
+        snap=HB_RSI.bestGenome.snap,
+        hold=HB_RSI.bestGenome.hold,
+        t=tick(),
+    })
+    if #HB_RSI.generationHistory>HB_RSI.maxHistory then
+        table.remove(HB_RSI.generationHistory,1)
+    end
+    HB_Toast(string.format("🧬 Gen %d | Fit %.0f%%",HB_RSI.generation,HB_RSI.bestFitness*100),"success")
+end
+
+function HB_RSI_Apply()
+    if not HB_RSI.enabled then
+        return
+    end
+    if tick()-HB_RSI.lastApplyTick<HB_RSI.applyInterval then
+        return
+    end
+    HB_RSI.lastApplyTick=tick()
+    local g=HB_RSI.bestGenome
+    if not g or not Flick then
+        return
+    end
+    local targetSnap=g.snap
+    local targetHold=g.hold
+    local targetVerify=g.verify
+    Flick.snapDur=Flick.snapDur*0.85+targetSnap*0.15
+    Flick.holdDur=Flick.holdDur*0.85+targetHold*0.15
+    Flick.verifyWait=Flick.verifyWait*0.85+targetVerify*0.15
+    if S.AimNoiseAmp then
+        S.AimNoiseAmp=S.AimNoiseAmp*0.85+g.noise*0.15
+    end
+    if S.AlignTol then
+        local tol=2+g.aggression*8
+        S.AlignTol=S.AlignTol*0.85+tol*0.15
+    end
+end
+
+function HB_RSI_RecordKill()
+    if not HB_RSI.enabled then
+        return
+    end
+    local g=HB_RSI.bestGenome
+    if g then
+        g.wins=g.wins+1
+        g.fitness=HB_RSI_Fitness(g)
+    end
+    HB_RSI.killsSinceEvolve=HB_RSI.killsSinceEvolve+1
+    if HB_RSI.killsSinceEvolve>=HB_RSI.evolveEveryKills then
+        HB_RSI.killsSinceEvolve=0
+        pcall(HB_RSI_Evolve)
+    end
+end
+
+function HB_RSI_RecordMiss()
+    if not HB_RSI.enabled then
+        return
+    end
+    local g=HB_RSI.bestGenome
+    if g then
+        g.losses=g.losses+1
+        g.fitness=HB_RSI_Fitness(g)
+    end
+end
+
+HB_RSI_Gui=HB_Create("ScreenGui",{Name="HB_RSI_Overlay",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=91},PG)
+HB_RSI_Frame=HB_Create("Frame",{Name="RSI",Size=UDim2.new(0,240,0,140),Position=UDim2.new(0,10,0,300),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.15,BorderSizePixel=0,Visible=false,ZIndex=70},HB_RSI_Gui)
+HB_Corner(HB_RSI_Frame,10)
+HB_Stroke(HB_RSI_Frame,Color3.fromRGB(150,100,255),2,0.3)
+HB_RSI_Title=HB_Create("TextLabel",{Size=UDim2.new(1,0,0,22),Position=UDim2.new(0,0,0,4),BackgroundTransparency=1,Text="🧬 RECURSIVE SELF-IMPROVEMENT",Font=Enum.Font.GothamBold,TextSize=11,TextColor3=Color3.fromRGB(200,180,255),TextXAlignment=Enum.TextXAlignment.Center,ZIndex=71},HB_RSI_Frame)
+HB_RSI_Info=HB_Create("TextLabel",{Size=UDim2.new(1,-16,1,-30),Position=UDim2.new(0,8,0,26),BackgroundTransparency=1,Text="",Font=Enum.Font.Code,TextSize=10,TextColor3=Color3.fromRGB(245,245,250),TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,TextWrapped=true,ZIndex=71},HB_RSI_Frame)
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if HB_RSI.enabled and HB_RSI_Frame.Visible then
+            local g=HB_RSI.bestGenome
+            if g then
+                local total=g.wins+g.losses
+                HB_RSI_Info.Text=string.format(
+                    "Gen: %d | Mut: %d | Cross: %d\nFit: %.0f%% (%d/%d)\nSnap: %.3f  Hold: %.3f\nVerify: %.3f  Noise: %.2f\nAggro: %.2f  Reverts: %d",
+                    HB_RSI.generation,
+                    HB_RSI.mutations,
+                    HB_RSI.crossovers,
+                    HB_RSI_Fitness(g)*100,
+                    g.wins,
+                    total,
+                    g.snap,
+                    g.hold,
+                    g.verify,
+                    g.noise,
+                    g.aggression,
+                    HB_RSI.reverts
+                )
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if HB_RSI.enabled then
+            pcall(HB_RSI_Apply)
+        end
+    end
+end)
+
+HB_RSI_OrigMeta=MetaLearnUpdate
+MetaLearnUpdate=function(perf)
+    HB_RSI_OrigMeta(perf)
+    if not HB_RSI.enabled then
+        return
+    end
+    if perf and perf>0.5 then
+        pcall(HB_RSI_RecordKill)
+    else
+        pcall(HB_RSI_RecordMiss)
+    end
+end
+
+HB_RSI_OrigFinalize=HB_RSI_Apply
+HB_RSI_Apply=function()
+    HB_RSI_OrigFinalize()
+    if HB_RSI.enabled and HB_RSI_Frame then
+        HB_RSI_Frame.Visible=S.RSIOverlay==true
+    end
+end
+
+RS.RenderStepped:Connect(function()
+    if HB_RSI.enabled and HB_RSI_Frame then
+        HB_RSI_Frame.Visible=S.RSIOverlay==true
+    end
+end)
+
+function HB_RSI_ForceEvolve()
+    HB_RSI.killsSinceEvolve=0
+    HB_RSI_Evolve()
+    HB_Toast("🧬 Evolução forçada — Gen "..HB_RSI.generation,"success")
+end
+
+function HB_RSI_ShowHistory()
+    print("═══ RSI HISTORY ═══")
+    for _,h in ipairs(HB_RSI.generationHistory) do
+        print(string.format("Gen %d | Fit %.0f%% | snap %.3f | hold %.3f",h.gen,h.fitness*100,h.snap,h.hold))
+    end
+    print("════════════════════")
+end
+
+function HB_RSI_Reset()
+    HB_RSI_Init()
+    HB_RSI.generation=1
+    HB_RSI.mutations=0
+    HB_RSI.crossovers=0
+    HB_RSI.reverts=0
+    HB_RSI.generationHistory={}
+    HB_Toast("🧬 RSI resetado","info")
+end
+
+S.RSIOverlay=S.RSIOverlay or false
+S.RSIEnabled=S.RSIEnabled or true
+
+HB_RSI_TabHook=function()
+    local tab=_G.UI and _G.UI.TabContents and _G.UI.TabContents["Revolu"]
+    if not tab or not _G.Cmp then
+        return
+    end
+    local y=0
+    for _,c in ipairs(tab:GetChildren()) do
+        if c:IsA("Frame") then
+            y=math.max(y,c.Position.Y.Offset+c.Size.Y.Offset+8)
+        end
+    end
+    y=_G.Cmp.Section(tab,"🧬 RECURSIVE SELF-IMPROVEMENT",y)
+    y=_G.Cmp.Toggle(tab,{text="RSI Enable",desc="Auto-melhora por kill",default=true,callback=function(v)
+        S.RSIEnabled=v
+        HB_RSI.enabled=v
+    end},y)
+    y=_G.Cmp.Toggle(tab,{text="RSI Overlay",desc="Mostra painel Gen/Fitness",default=false,callback=function(v)
+        S.RSIOverlay=v
+    end},y)
+    y=_G.Cmp.Button(tab,{text="🧬 Forçar Evolução",callback=function()
+        HB_RSI_ForceEvolve()
+    end},y)
+    y=_G.Cmp.Button(tab,{text="📊 Ver Histórico",callback=function()
+        HB_RSI_ShowHistory()
+    end},y)
+    y=_G.Cmp.Button(tab,{text="🔄 Resetar RSI",danger=true,callback=function()
+        HB_RSI_Reset()
+    end},y)
+end
+
+task.delay(1,function()
+    pcall(HB_RSI_TabHook)
+end)
+
+HB_RSI.enabled=S.RSIEnabled
+
+print("[HB] ✅ Recursive Self-Improvement Loop ativo — Gen "..HB_RSI.generation)
