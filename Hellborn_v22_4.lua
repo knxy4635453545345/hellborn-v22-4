@@ -4,7 +4,7 @@ RS=game:GetService("RunService")
 TweenService=game:GetService("TweenService")
 Lighting=game:GetService("Lighting")
 HttpService=game:GetService("HttpService")
-ReplicatedStorage=game:GetService("ReplicatedStorage")
+SoundService=game:GetService("SoundService")
 LP=Players.LocalPlayer
 PG=LP:WaitForChild("PlayerGui")
 Camera=workspace.CurrentCamera
@@ -17,8 +17,6 @@ HB_ROW_H=42
 HB_ROW_GAP=8
 HB_SECTION_H=34
 HB_HIST_SZ=60
-HB_MAX_UNDO=30
-HB_POOL_SIZE=200
 for _,g in ipairs(PG:GetChildren()) do
     if g:IsA("ScreenGui") and (g.Name:find("HB_") or g.Name:find("HELLBORN")) then
         g:Destroy()
@@ -74,39 +72,6 @@ function HB_EaseBezier(t,p1,p2)
     local u=1-t
     return 3*u*u*t*p1+3*u*t*t*p2+t*t*t
 end
-function HB_Spring(obj,prop,target,speed)
-    speed=speed or 16
-    local conn
-    conn=RS.Heartbeat:Connect(function(dt)
-        if not obj or not obj.Parent then
-            conn:Disconnect()
-            return
-        end
-        local cur=obj[prop]
-        if typeof(cur)=="number" then
-            local n=cur+(target-cur)*math.min(dt*speed,1)
-            if math.abs(target-cur)<0.0005 then
-                obj[prop]=target
-                conn:Disconnect()
-                return
-            end
-            obj[prop]=n
-        elseif typeof(cur)=="Color3" then
-            local r=cur.R+(target.R-cur.R)*math.min(dt*speed,1)
-            local g=cur.G+(target.G-cur.G)*math.min(dt*speed,1)
-            local b=cur.B+(target.B-cur.B)*math.min(dt*speed,1)
-            if math.abs(target.R-cur.R)<0.005 and math.abs(target.B-cur.B)<0.005 then
-                obj[prop]=target
-                conn:Disconnect()
-                return
-            end
-            obj[prop]=Color3.new(r,g,b)
-        else
-            obj[prop]=target
-            conn:Disconnect()
-        end
-    end)
-end
 function HB_PointIn(pos,obj)
     if not obj or not obj.Parent then
         return false
@@ -137,16 +102,12 @@ Themes={
     Neon=Color3.fromRGB(0,255,180),
     Matrix=Color3.fromRGB(0,230,70),
     Blood=Color3.fromRGB(140,0,0),
-    Custom=Color3.fromRGB(220,40,40),
 }
 S=S or {}
 S.AutoFlick=true
 S.FlickKey=Enum.KeyCode.Q
 S.SilentOn=true
 S.AIOn=true
-S.KillConfirm=true
-S.VerifyHit=true
-S.RetryMiss=true
 S.AlignTol=4
 S.Retries=2
 S.AimSmooth=0.15
@@ -154,235 +115,83 @@ S.FlickMode="Normal"
 S.TrigOn=false
 S.TrigRad=60
 S.TrigCD=0.35
-S.TrigHead=true
 S.ESP=false
 S.ESPName=true
 S.ESP_LOD=true
-S.Companion=false
+S.Chams=false
+S.ESPArrows=false
+S.ESPSkeleton=false
+S.Radar=false
+S.TimelinePredictor=false
 S.Hitmark=true
 S.KillFeed=true
-S.Watermark=false
 S.Cross=false
 S.CrossStyle="Cross"
 S.CrossSize=12
-S.FOVCirc=false
-S.LockVis=false
-S.LockInd=true
-S.HUD=false
-S.Stealth=false
-S.UISnd=true
-S.HitSnd=true
-S.HitSndType="Default"
-S.PerAction=false
+S.ESPThick=2
 S.AutoSave=true
 S.Theme="Red"
-S.UIFont="Gotham"
-S.Profile="Default"
-S.Part=true
-S.PartCount=40
-S.AntiDetect=true
-S.Clean=false
-S.DebugOn=false
-S.LayoutEd=false
-S.KeybindPer=false
-S.SnapToEdge=true
-S.MicroDev=true
-S.ReactDelay=true
-S.ReactMin=0.08
-S.ReactMax=0.18
-S.MouseSim=true
-S.Backoff=true
-S.FakeIn=true
-S.AdminOff=true
-S.PSHide=true
-S.BotDet=true
 S.Humanize=true
 S.RateLimit=true
 S.RandomAim=true
 S.FakeMiss=false
-S.KernelLvl=1
-S.IdlePattern=true
-S.PassiveAntiReport=true
-S.HumanCameraSettle=true
-S.Coins=false
-S.CoinsRad=30
-S.Flee=true
-S.FleeDist=15
-S.RoundAnal=true
-S.SpecDet=false
-S.KillerTrack=true
-S.KillChain=false
-S.AutoSheriff=false
-S.BackstabWarn=false
-S.RoundTimer=true
-S.DeathRecap=true
-S.StreakRwd=true
-S.AutoSheriffPick=true
-S.MurderTracker=true
-S.BotMode=false
-S.BotModeTimeout=120
-S.KillCamReplay=true
-S.DeathRecapVisual=true
-S.DeadmanHeartbeat=true
-S.Confidence=true
-S.Ensemble=true
-S.JukeDet=true
-S.WeaponSpeed=true
-S.Backtrack=true
-S.JumpPredict=true
-S.Markov=true
-S.ChaseWeight=true
-S.AdaptiveOff=true
-S.OutlierRej=true
-S.NNReal=true
-S.NNRate=0.01
-S.WeaponAutoTune=true
-S.SmartTarget=true
-S.HysteresisMs=500
-S.Timeline=false
-S.Anomaly=true
-S.AutoShot=false
-S.ReplayExp=false
-S.HeatmapView=false
-S.KDChart=true
-S.PlayerProf=true
-S.PlayerPersist=true
-S.RoundPhaseAdapt=true
-S.ThreatLivePanel=true
-S.Haptic=true
-S.KillExp=true
-S.Shake="Médio"
-S.Trail=true
-S.Blood=false
-S.Chromatic=false
-S.CrossDynamic=false
-S.ToastIcons=true
-S.Deadman=true
-S.FallbackSilent=true
-S.AdaptiveTiming=true
-S.AutoRecon=true
-S.SelfDiag=true
-S.ErrGuard=true
-S.AutoRestart=true
-S.CameraRecover=true
-S.NetworkLossGuard=true
-S.ConfigBackup=true
-S.BezierMouse=true
-S.HitSoundVerify=true
-S.Train=false
-S.ReplaySlow=false
-S.Dummy=false
-S.FlickScore=true
-S.PredVis=false
-S.AutoGame=true
-S.ProfileGame=true
-S.ExtraRoles=false
-S.ModeDetect=true
-S.CrossKeys=false
-S.FavoritePins={}
-S.CompactHUD=false
-S.ProfileManager=true
-S.PanicBtn=true
 S.ChatCommands=true
-S.ConfirmationReset=true
 S.Kills=0
 S.Deaths=0
 S.Hits=0
 S.Misses=0
-S.BestStreak=0
 S.Streak=0
+S.BestStreak=0
 S.SessionStart=tick()
-S._notif={}
-S._pingJit=0
 S.FPSAdaptive=true
 S.FPSAdaptiveMinFPS=45
-S.PreAim=true
-S.PreAimDist=80
-S.StickyAim=true
-S.StickyAimMs=200
-S.StickyAimStrength=0.30
-S.ProgressiveFlick=true
-S.MicroCorrectMs=30
-S.WeaponCooldownCheck=true
-S.KMeansEnable=true
-S.KMeansClusters=3
-S.HitSoundSync=true
-S.RecoilComp=true
-S.RecoilCompVal=0.15
 S.HitscanOpt=true
-S.ThreatTrajectory=true
-S.ThreatTrajectoryWindow=0.5
+S.WeaponCooldownCheck=true
 S.AntiFlickBlock=true
 S.AntiFlickBackoff=2
 S.PostKillDelay=true
 S.PostKillDelayMs=400
-S.ReplayLearning=true
-S.BouncePredict=true
-S.FlickCurveMode="SCurve"
-S.TargetSwitchDelay=true
-S.TargetSwitchDelayMs=500
-S.AimHumanization=true
-S.AimHumanizationPct=0.15
-S.AimNoiseAmp=0.5
-S.AimNoiseFreq=8
-S.SmartWeaponSelect=true
-S.WeaponAutoSwap=true
-S.REV_AI={meta=true,nas=true,cloning=true,selfPlay=true,worldModel=true,activeInf=true,transformer=true,moe=true,uncert=true,causal=true,counterfact=true,adversarial=true,transfer=true,federated=true,lifelong=true,metaLR=0.01,nasEpochs=20,selfPlayEpochs=100,worldModelSteps=5,infDepth=3,attnHeads=4,moeExperts=5,uncertThreshold=0.7,causalWindow=60,counterfactN=20,adversarialInterval=300,transferGames=3,federatedPeers=10,lifelongMemoryMB=50}
-S.REV_HUMAN={persona="calculista",personaStrength=0.7,warmup=true,warmupMin=2,cooldown=true,cooldownMin=2,emotion=true,emotionSens=0.5,cognitive=true,cogMultiMax=4,fatigue=true,fatiguePerHour=0.05,squad=true,squadRadius=30,reputation=true,reputaWindow=600,altDetect=true,altThreshold=0.8}
-S.REV_PHYS={ballistic=true,grav=196.2,drag=0.01,bounce=true,maxBounces=2,rayTrace=true,rayCount=100,ik=true,ikBones=8,animMirror=true,animWindow=15,gameStateRecon=true,reconRange=200,serverMirror=true,mirrorErrThresh=0.05,latency2=true,uploadMs=30,jitterBuf=true,jitterWindow=5}
-S.REV_SOCIAL={antiAttr=true,misdirect=true,misdirectRate=0.15,mimicry=false,mimicStrength=0.5,bait=true,baitPlayers=3,antiReport=true,antiReportRate=0.10,skillCurve=true,skillCurveHours=2,p2p=false,p2pKey=math.random(100000,999999),zkProof=false,zkChainLen=10}
-S.REV_ARCH={multiProc=true,procCount=3,simd=true,simdWidth=8,bytecode=true,bytecodeCache=100,rollback=true,snapshotFrames=30,timeSlice=true,sliceFrames=4,diffSync=true,diffThreshold=0.5,hotSwap=true,aotCompile=true}
-S.REV_FEAT={whatIf=true,whatIfIter=1000,forecast=true,forecastSec=10,director=true,directorClips=10,voice=false,voiceLang="pt-BR",wager=true,wagerConf=0.7,blockchain=true,blockchainHash="sha256"}
-S.REV_GAME={multiRound=true,multiRoundDepth=5,metaGame=true,metaSample=20,adaptDiff=true,adaptRange=0.3,teamSync=false,teamChannel=1,roleRot=true,roleRotCool=3,legendary=true,legendaryThreshold=20,faction=false,factionTag="HB"}
-S.REV_STEALTH={advExamples=true,advEpsilon=0.05,steganog=true,stegChannels=3,jitterDist=true,jitterMean=0.23,jitterStd=0.08,antiAntiCheat=true,aacDelay=30,obfuscate=true,obfuscateLevel=2,adaptiveRate=true,rateWindow=10,plausible=true,plausibleDelay=5}
-S.REV_MAD={neuroSym=true,neuroLR=0.005,quantum=true,quantumTemp=100,evolutionary=true,evoPop=20,evoGens=50,swarm=true,swarmN=5,genetic=true,geneLength=100,antColony=true,antN=20,digitalTwin=true,twinFPS=30,sleepWake=true,sleepIdleThreshold=300,curriculum=true,currStage=1,transferReal=false,dreamState=true,dreamNightRate=0.5,recursive=true,recursiveInterval=1000}
-Profiles={Default={},Rage={},Legit={},Sniper={},AntiAdmin={},Training={},Bot={}}
+S.ThreatTrajectory=true
+S.SmartTarget=true
+S.NNRate=0.01
+S.PreAim=true
+S.StickyAim=true
+S.StickyAimStrength=0.30
+S.ProgressiveFlick=true
+S.RSIEnabled=true
+S.REV_AI={meta=true,nas=true,cloning=true,selfPlay=true,worldModel=true,activeInf=true,transformer=true,moe=true,uncert=true,causal=true,counterfact=true,adversarial=true,transfer=true,federated=true,lifelong=true,selfPlayEpochs=100,uncertThreshold=0.7}
+S.REV_HUMAN={persona="calculista",personaStrength=0.7,warmup=true,warmupMin=2,cooldown=true,emotion=true,cognitive=true,cogMultiMax=4,fatigue=true,fatiguePerHour=0.05,squad=true,squadRadius=30,reputation=true,altDetect=true,altThreshold=0.8}
+S.REV_PHYS={ballistic=true,rayTrace=true,ik=true,animMirror=true,gameStateRecon=true,serverMirror=true,latency2=true,uploadMs=30,jitterBuf=true}
+S.REV_SOCIAL={antiAttr=true,misdirect=true,misdirectRate=0.15,bait=true,antiReport=true,antiReportRate=0.10,skillCurve=true,skillCurveHours=2,p2p=false,zkProof=false}
+S.REV_ARCH={rollback=true,snapshotFrames=30,diffSync=true}
+S.REV_FEAT={whatIf=true,forecast=true,director=true,directorClips=10,wager=true,blockchain=true}
+S.REV_GAME={multiRound=true,multiRoundDepth=5,metaGame=true,roleRot=true,legendary=true,legendaryThreshold=20}
+S.REV_STEALTH={advExamples=true,advEpsilon=0.05,jitterDist=true,jitterMean=0.23,jitterStd=0.08,antiAntiCheat=true,aacDelay=30,adaptiveRate=true,rateWindow=10,plausible=true}
+S.REV_MAD={neuroSym=true,quantum=true,quantumTemp=100,evolutionary=true,swarm=true,genetic=true,antColony=true,digitalTwin=true,sleepWake=true,sleepIdleThreshold=300,curriculum=true,currStage=1,dreamState=true,recursive=true,recursiveInterval=1000}
 Cache={Chars={},Heads={},HRPs={},List={},Set={}}
 Hst={}
-Ping={samples={},jitter=0,lastBeat=0,fps=60,fpsHist={}}
-Sil={enabled=true,restore=0.12,bspd=2500,lastFire=0,fail=0,method="cframe"}
-Wat={beats={},log={}}
+Sil={enabled=true,bspd=2500,lastFire=0,fail=0}
 KillLog={}
-Stats={Kills=0,Deaths=0,Hits=0,Misses=0,Best=0}
 Acc={shots={}}
-Undo={past={},future={},_undolock=false}
-Heatmap={pts={}}
-HeatDeath={pts={}}
-Err={count=0,last=0,disabled=false}
-Admin={list={},cache={},hopPending=false}
+Err={count=0,last=0}
 Round={cur=0,alive=0,start=0,time=0,phase="early"}
-KillTrack={killer=nil}
-Spect={watching={},specters={}}
-Anly={timeline={},angles={},dists={},anomalies={}}
-FX={shake=0,shakeDur=0}
-Train={history={}}
 Game={name="Unknown",mode="Normal"}
-PerKeys={}
 Weapon={learnedSpeeds={},lastFireTime={}}
-PlayerReaction={}
-PlayerRatings={}
 WinRate={murderer={w=0,l=0},sheriff={w=0,l=0},innocent={w=0,l=0}}
-ReplayBuffer={frames={},maxFrames=180}
-Dummy={model=nil}
 IdleSince=tick()
-PredRing={part=nil}
-RevAI={metaHistory={},nasArchs={},cloneBuffer={},selfPlayGames={},worldState={},attnCache={},causalGraph={},counterfactResults={},adversarialCycles=0,transferCache={},federatedW={},lifelongMem={},epochs=0}
-RevHuman={squads={},reputa={},emotion=0,cogLoad=0,fatigue=0}
-RevPhys={reconState={}}
-RevSocial={attributionTrail={},misdirectCount=0,p2pMsgs={},zkChain={}}
-RevArch={procs={},bytecode={},snapshots={},diffLast={},hotMods={},aotCache={}}
-RevFeat={whatIfResults={},forecastCache={},directorBuf={},voiceCache={},wagerCache={},chain={}}
-RevGame={roundPlan={},meta={},adaptLevel=1,roleHistory={},legendary={},faction={}}
-RevStealth={advNoise={},stegBuf={},jitterSamp={},aac=0,obfMap={},rateBuf={},plausible={}}
-RevMad={quantum={},twin={},recursive={gens=0}}
-ReplayLearn={templates={},saves=0}
 AntiFlickGuard={fails=0,backoffUntil=0}
 PostKillTimer={until_=0}
-StickyAimData={player=nil,until_=0}
-PreAimData={active=false,startTick=0}
-FPS={cur=60,samples={},lastT=tick()}
+FPS={cur=60,lastT=tick()}
+RevAI={metaHistory={},nasArchs={},cloneBuffer={},selfPlayGames={},worldState={},causalGraph={},adversarialCycles=0,transferCache={},lifelongMem={},epochs=0}
+RevHuman={squads={},reputa={},emotion=0,cogLoad=0,fatigue=0}
+RevPhys={reconState={}}
+RevSocial={attributionTrail={},misdirectCount=0,zkChain={}}
+RevArch={snapshots={}}
+RevFeat={directorBuf={},chain={}}
+RevGame={roundPlan={},roleHistory={},legendary={}}
+RevStealth={rateBuf={},plausible={}}
+RevMad={twin={},recursive={gens=0}}
 NNReal={inputN=8,hiddenN=6,outputN=3,W1={},b1={},W2={},b2={},lr=0.01,trained=0}
-NNLSTM={h={0,0,0,0},c={0,0,0,0},trained=0}
 function HB_NNInit()
     NNReal.W1={}
     NNReal.b1={}
@@ -455,7 +264,7 @@ function HB_Toast(msg,kind)
         return
     end
     if not UI.ToastHolder then
-        UI.ToastHolder=HB_Create("Frame",{Size=UDim2.new(0,300,0,500),Position=UDim2.new(1,-320,0,20),BackgroundTransparency=1},UI.Screen)
+        UI.ToastHolder=HB_Create("Frame",{Size=UDim2.new(0,300,0,500),Position=UDim2.new(1,-320,0,20),BackgroundTransparency=1,Parent=UI.Screen})
     end
     local color=Palette.Accent
     if kind=="success" then
@@ -465,11 +274,11 @@ function HB_Toast(msg,kind)
     elseif kind=="danger" then
         color=Palette.Danger
     end
-    local t=HB_Create("Frame",{Size=UDim2.new(1,0,0,42),Position=UDim2.new(1,320,0,0),BackgroundColor3=Palette.Surface,BackgroundTransparency=0.05,BorderSizePixel=0},UI.ToastHolder)
+    local t=HB_Create("Frame",{Size=UDim2.new(1,0,0,42),Position=UDim2.new(1,320,0,0),BackgroundColor3=Palette.Surface,BackgroundTransparency=0.05,BorderSizePixel=0,Parent=UI.ToastHolder})
     HB_Corner(t,8)
     HB_Stroke(t,color,1.5,0.3)
-    HB_Create("Frame",{Size=UDim2.new(0,3,1,-12),Position=UDim2.new(0,6,0,6),BackgroundColor3=color,BorderSizePixel=0},t)
-    HB_Create("TextLabel",{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,14,0,0),BackgroundTransparency=1,Text=msg,Font=Enum.Font.Gotham,TextSize=12,TextColor3=Palette.TextHigh,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true},t)
+    HB_Create("Frame",{Size=UDim2.new(0,3,1,-12),Position=UDim2.new(0,6,0,6),BackgroundColor3=color,BorderSizePixel=0,Parent=t})
+    HB_Create("TextLabel",{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,14,0,0),BackgroundTransparency=1,Text=msg,Font=Enum.Font.Gotham,TextSize=12,TextColor3=Palette.TextHigh,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,Parent=t})
     local ex={}
     for _,c in ipairs(UI.ToastHolder:GetChildren()) do
         if c:IsA("Frame") and c~=t then
@@ -590,32 +399,7 @@ function GetRole(p)
 end
 function HB_GetH(p)
     if not Hst[p] then
-        Hst[p]={
-            samples={},
-            kalman={x={0,0,0,0,0,0},lastT=0,gain=0.35},
-            vel=Vector3.zero,
-            prevVel=nil,
-            acc=Vector3.zero,
-            jit=0,
-            stab=1,
-            lastPos=nil,
-            lastT=0,
-            dCh=0,
-            lastDir=nil,
-            markov={},
-            lastD2=nil,
-            lastD1=nil,
-            jumps={},
-            lastY=0,
-            jumpPred=0,
-            chase=false,
-            chaseFr=0,
-            tpIgn=0,
-            weapon="unknown",
-            trajectoryScore=0,
-            shotsFired=0,
-            shotsHit=0,
-        }
+        Hst[p]={samples={},kalman={x={0,0,0,0,0,0},lastT=0,gain=0.35},vel=Vector3.zero,prevVel=nil,acc=Vector3.zero,jit=0,stab=1,lastPos=nil,lastT=0,dCh=0,lastDir=nil,chase=false,chaseFr=0,tpIgn=0,weapon="unknown",shotsFired=0,shotsHit=0}
     end
     return Hst[p]
 end
@@ -674,7 +458,6 @@ function HB_UpdateH(p,pos,hum)
                         h.chaseFr=math.max(0,h.chaseFr-1)
                     end
                     h.chase=h.chaseFr>20
-                    h.trajectoryScore=h.vel:Dot(toMe.Unit)/20
                 end
             end
             local ch=Cache.Chars[p]
@@ -765,9 +548,6 @@ function EquipWeapon(tool)
     end)
 end
 function GetWeaponSpeed(tool)
-    if not S.WeaponSpeed then
-        return Sil.bspd
-    end
     if not tool then
         return Sil.bspd
     end
@@ -825,9 +605,8 @@ function SilentFire(tool,aimPos)
         return false
     end
     Sil.lastFire=tick()
-    local k={snapMul=1,restoreMul=1,missChance=0}
-    if S.FakeMiss and math.random()<k.missChance then
-        aimPos=aimPos+Vector3.new((math.random()-0.5)*2,(math.random()-0.5)*2,(math.random()-0.5)*2)
+    if S.FakeMiss and math.random()<0.01 then
+        aimPos=aimPos+Vector3.new((math.random()-0.5)*4,(math.random()-0.5)*4,(math.random()-0.5)*4)
     end
     local handle=tool:FindFirstChild("Handle")
     local lpCh=LP.Character
@@ -863,8 +642,7 @@ function SilentFire(tool,aimPos)
     end
     return ok
 end
-print("[HB] ✅ PARTE 1/5 — "..HB_SERIAL)
-MetaLearnUpdate=function(perf)
+function MetaLearnUpdate(perf)
     if not S.REV_AI.meta then
         return
     end
@@ -888,24 +666,6 @@ MetaLearnUpdate=function(perf)
         Flick.snapDur=Flick.snapDur*0.7+(s/5)*0.3
         RevAI.epochs=RevAI.epochs+1
     end
-end
-function NASSelect()
-    if not S.REV_AI.nas then
-        return 1
-    end
-    if #RevAI.nasArchs==0 then
-        for i=1,5 do
-            table.insert(RevAI.nasArchs,{layers=math.random(1,3),loss=math.random()})
-        end
-    end
-    local best,bestLoss=1,math.huge
-    for i,a in ipairs(RevAI.nasArchs) do
-        if a.loss<bestLoss then
-            bestLoss=a.loss
-            best=i
-        end
-    end
-    return best
 end
 function BehaviourClone(aimVec,targetVec)
     if not S.REV_AI.cloning then
@@ -953,7 +713,7 @@ function WorldModelPredict(p,dt)
     return state.pos+state.vel*dt
 end
 function ActiveInference(p)
-    if not S.REV_AI.activeInf then
+    if not S.REV_AI.activeInf or not p then
         return nil
     end
     local h=Hst[p]
@@ -967,8 +727,7 @@ function ActiveInference(p)
             mean=mean+h.samples[i].pos
         end
     end
-    mean=mean/n
-    return mean,1
+    return mean/n,1
 end
 function AttentionPredict(h,futureTime)
     if not S.REV_AI.transformer or #h.samples<10 then
@@ -1030,17 +789,7 @@ function Uncertainty(h)
             variance=variance+(h.samples[i].pos-mean).Magnitude^2
         end
     end
-    variance=variance/n
-    return 1/(1+math.sqrt(variance))
-end
-function CausalAnalyze(action,result)
-    if not S.REV_AI.causal then
-        return nil
-    end
-    table.insert(RevAI.causalGraph,{a=action,r=result,t=tick()})
-    if #RevAI.causalGraph>500 then
-        table.remove(RevAI.causalGraph,1)
-    end
+    return 1/(1+math.sqrt(variance/n))
 end
 function CounterfactualSim(tp,camPos)
     if not S.REV_AI.counterfact then
@@ -1063,43 +812,12 @@ function AdversarialTick()
         end
     end
 end
-function CrossGameTransfer()
-    if not S.REV_AI.transfer then
-        return
-    end
-    RevAI.transferCache[Game.name]=RevAI.transferCache[Game.name] or {}
-end
-function FederatedAggregate()
-    if not S.REV_AI.federated then
-        return
-    end
-    RevAI.federatedW={}
-    for _,p in ipairs(Cache.List) do
-        RevAI.federatedW[p.Name]={t=tick(),weight=math.random()}
-    end
-end
 function LifelongStore(input,target)
     if not S.REV_AI.lifelong then
         return
     end
     local key=string.format("%.2f_%.2f_%.2f",input[1],input[2],input[3])
     RevAI.lifelongMem[key]={inp=input,out=target,t=tick()}
-    local count=0
-    for _ in pairs(RevAI.lifelongMem) do
-        count=count+1
-    end
-    if count>(S.REV_AI.lifelongMemoryMB or 50)*100 then
-        local oldest,oldestT=nil,math.huge
-        for k,v in pairs(RevAI.lifelongMem) do
-            if v.t<oldestT then
-                oldestT=v.t
-                oldest=k
-            end
-        end
-        if oldest then
-            RevAI.lifelongMem[oldest]=nil
-        end
-    end
 end
 function LifelongRecall(input)
     if not S.REV_AI.lifelong then
@@ -1122,10 +840,10 @@ function PersonaApply()
     if not p or not Flick then
         return
     end
-    local strength=S.REV_HUMAN.personaStrength or 0.7
-    Flick.snapDur=Flick.snapDur*(1-strength)+(0.045*p.snapMul)*strength
-    Flick.holdDur=Flick.holdDur*(1-strength)+(0.15*p.holdMul)*strength
-    S.AimSmooth=S.AimSmooth*(1-strength)+(0.15*p.smoothMul)*strength
+    local st=S.REV_HUMAN.personaStrength or 0.7
+    Flick.snapDur=Flick.snapDur*(1-st)+(0.045*p.snapMul)*st
+    Flick.holdDur=Flick.holdDur*(1-st)+(0.15*p.holdMul)*st
+    S.AimSmooth=S.AimSmooth*(1-st)+(0.15*p.smoothMul)*st
     S.ReactMin=p.reactMin
     S.ReactMax=p.reactMax
 end
@@ -1251,24 +969,7 @@ function BallisticSim(origin,targetPos,tool)
     local dist=(targetPos-origin).Magnitude
     local bspd=GetWeaponSpeed(tool)
     local t=dist/bspd
-    local dropY=0.5*(S.REV_PHYS.grav or 196.2)*t*t
-    return Vector3.new(targetPos.X,targetPos.Y+dropY,targetPos.Z)
-end
-function RayTracePath(origin,targetPos)
-    if not S.REV_PHYS or not S.REV_PHYS.rayTrace then
-        return targetPos
-    end
-    local dir=(targetPos-origin)
-    local rc=S.REV_PHYS.rayCount or 100
-    for i=1,math.min(5,rc//20) do
-        local step=origin+dir*((i-1)/5)
-        local ray=Ray.new(step,dir.Unit*2)
-        local part=workspace:FindPartOnRay(ray,LP.Character)
-        if part then
-            return step
-        end
-    end
-    return targetPos
+    return Vector3.new(targetPos.X,targetPos.Y+0.5*196.2*t*t,targetPos.Z)
 end
 function IKPrediction(char,ft)
     if not S.REV_PHYS or not S.REV_PHYS.ik then
@@ -1288,13 +989,6 @@ function AnimPredict(char,ft)
     local head=char:FindFirstChild("Head")
     if not head then
         return nil
-    end
-    local hum=char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        local state=hum:GetState()
-        if state==Enum.HumanoidStateType.Jumping or state==Enum.HumanoidStateType.Freefall then
-            return head.Position+Vector3.new(0,ft*5,0)
-        end
     end
     return head.Position
 end
@@ -1316,16 +1010,7 @@ function ServerMirror(tp,pred)
     if not S.REV_PHYS or not S.REV_PHYS.serverMirror then
         return pred
     end
-    local ping=LP:GetNetworkPing()
     return pred
-end
-function LatencyComp()
-    if not S.REV_PHYS or not S.REV_PHYS.latency2 then
-        return LP:GetNetworkPing()*0.5
-    end
-    local total=LP:GetNetworkPing()
-    local up=(S.REV_PHYS.uploadMs or 30)/1000
-    return (total-up*0.5)*0.7+up*0.3
 end
 function JitterBuffer(p)
     if not S.REV_PHYS or not S.REV_PHYS.jitterBuf then
@@ -1337,6 +1022,7 @@ function JitterBuffer(p)
     end
     return h.samples[math.max(1,#h.samples-3)].pos
 end
+print("[HB] ✅ PARTE 1/4 ok")
 function AntiAttribution(p)
     if not S.REV_SOCIAL or not S.REV_SOCIAL.antiAttr then
         return
@@ -1382,7 +1068,7 @@ function P2PEncode(msg)
     if not S.REV_SOCIAL or not S.REV_SOCIAL.p2p then
         return nil
     end
-    local k=S.REV_SOCIAL.p2pKey
+    local k=S.REV_SOCIAL.p2pKey or 12345
     local r=""
     for i=1,#msg do
         r=r..string.char((msg:byte(i)+k)%256)
@@ -1393,16 +1079,12 @@ function P2PReceive(msg)
     if not S.REV_SOCIAL or not S.REV_SOCIAL.p2p then
         return
     end
-    table.insert(RevSocial.p2pMsgs,{t=tick(),msg=msg})
 end
 function ZKProofChallenge()
     if not S.REV_SOCIAL or not S.REV_SOCIAL.zkProof then
         return
     end
     RevSocial.zkChain={}
-    for i=1,(S.REV_SOCIAL.zkChainLen or 10) do
-        table.insert(RevSocial.zkChain,{hash=math.random(100000,999999),t=tick()})
-    end
 end
 function SnapshotState()
     if not S.REV_ARCH or not S.REV_ARCH.rollback then
@@ -1417,34 +1099,11 @@ function DiffSync(key,value)
     if not S.REV_ARCH or not S.REV_ARCH.diffSync then
         return value
     end
-    RevArch.diffLast[key]={val=value,t=tick()}
     return value
-end
-function BytecodeCache(key,fn)
-    if not S.REV_ARCH or not S.REV_ARCH.bytecode then
-        return fn()
-    end
-    if RevArch.bytecode[key] then
-        return RevArch.bytecode[key]
-    end
-    local r=fn()
-    RevArch.bytecode[key]=r
-    return r
-end
-function HotSwap(name,newVal)
-    if not S.REV_ARCH or not S.REV_ARCH.hotSwap then
-        return
-    end
-    RevArch.hotMods[name]={old=RevArch.hotMods[name],new=newVal,t=tick()}
 end
 function WhatIfSim(aimPos)
     if not S.REV_FEAT or not S.REV_FEAT.whatIf then
         return aimPos
-    end
-    RevFeat.whatIfResults={}
-    for i=1,math.min(50,S.REV_FEAT.whatIfIter or 1000) do
-        local variation=aimPos+Vector3.new((math.random()-0.5)*2,(math.random()-0.5)*2,(math.random()-0.5)*2)
-        table.insert(RevFeat.whatIfResults,variation)
     end
     return aimPos
 end
@@ -1514,19 +1173,6 @@ function MetaGameAnalyze()
     if not S.REV_GAME or not S.REV_GAME.metaGame then
         return
     end
-    local sampleSize=S.REV_GAME.metaSample or 20
-    RevGame.meta.avgSkill=0
-    for _,p in ipairs(Cache.List) do
-        if p~=LP then
-            local rep=RevHuman.reputa[p]
-            if rep then
-                RevGame.meta.avgSkill=RevGame.meta.avgSkill+(rep.kills or 0)
-            end
-        end
-    end
-    if #Cache.List>1 then
-        RevGame.meta.avgSkill=RevGame.meta.avgSkill/(#Cache.List-1)
-    end
 end
 function RoleRotation()
     if not S.REV_GAME or not S.REV_GAME.roleRot then
@@ -1544,7 +1190,6 @@ function LegendaryCheck()
     end
     if S.Kills>=(S.REV_GAME.legendaryThreshold or 20) and not RevGame.legendary.active then
         RevGame.legendary.active=true
-        HB_Toast("LEGENDARY ACHIEVED","success")
     end
 end
 function AdversarialNoise(aimPos)
@@ -1596,26 +1241,11 @@ function PlausibleDefense()
     end
     RevStealth.plausible.lastClaim=tick()
 end
-function SteganographyHide(payload)
-    if not S.REV_STEALTH or not S.REV_STEALTH.steganog then
-        return payload
-    end
-    RevStealth.stegBuf={}
-    for i=1,#payload do
-        table.insert(RevStealth.stegBuf,{char=payload:byte(i),ch=i%(S.REV_STEALTH.stegChannels or 3)})
-    end
-    return payload
-end
 function NeuroSymbolic(input)
     if not S.REV_MAD or not S.REV_MAD.neuroSym then
         return nil
     end
-    local out=HB_NNForward(input)
-    local lr=S.REV_MAD.neuroLR or 0.005
-    if type(out)=="table" and out[1] and out[2] then
-        return out[1]
-    end
-    return nil
+    return HB_NNForward(input)
 end
 function QuantumAnnealing(cands,costFn)
     if not S.REV_MAD or not S.REV_MAD.quantum then
@@ -1639,13 +1269,7 @@ function EvolutionStep(pop,fitFn)
     if not S.REV_MAD or not S.REV_MAD.evolutionary then
         return pop
     end
-    local pop2={}
-    for i=1,(S.REV_MAD.evoPop or 20) do
-        local p1=pop[math.random(1,#pop)]
-        local p2=pop[math.random(1,#pop)]
-        table.insert(pop2,{a=p1.a or 0,b=p2.b or 0})
-    end
-    return pop2
+    return pop
 end
 function SwarmStep(nodes,target)
     if not S.REV_MAD or not S.REV_MAD.swarm then
@@ -1665,26 +1289,13 @@ function GeneMutate(genes,rate)
     if not S.REV_MAD or not S.REV_MAD.genetic then
         return genes
     end
-    for i=1,#genes do
-        if math.random()<(rate or 0.1) then
-            genes[i]=genes[i]+(math.random()-0.5)*0.1
-        end
-    end
     return genes
 end
 function AntColonySolve(points)
     if not S.REV_MAD or not S.REV_MAD.antColony then
         return points
     end
-    local best,bestD=nil,math.huge
-    for _,pt in ipairs(points) do
-        local d=pt.Magnitude or 0
-        if d<bestD then
-            bestD=d
-            best=pt
-        end
-    end
-    return {best}
+    return points
 end
 function DigitalTwinUpdate()
     if not S.REV_MAD or not S.REV_MAD.digitalTwin then
@@ -1761,7 +1372,6 @@ function LogKill(victim,dist,hs)
     if #KillLog>100 then
         table.remove(KillLog)
     end
-    Stats.Kills=Stats.Kills+1
     S.Kills=S.Kills+1
     S.Streak=(S.Streak or 0)+1
     if S.Streak>(S.BestStreak or 0) then
@@ -1775,7 +1385,7 @@ function LogMiss(victim)
     end
     S.Streak=0
 end
-print("[HB] ✅ PARTE 2/5 ok")
+print("[HB] ✅ PARTE 2/4 ok")
 function ComputeAim(tp,tch,camPos,tool)
     if not tch or not tch.Parent then
         return nil
@@ -1866,21 +1476,15 @@ function ComputeAim(tp,tch,camPos,tool)
         return nil
     end
     base=AdversarialNoise(base)
-    if S.PreAim and PreAimData then
-        PreAimData.active=true
-        PreAimData.startTick=tick()
-    end
     return base,totalTime,dist
 end
 Flick={
     active=false,
     phase="idle",
-    startTick=0,
     snapStartTick=0,
     snapDur=0.045,
     holdDur=0.15,
     returnDur=0.10,
-    cooldown=0.15,
     verifyWait=0.50,
     targetPlayer=nil,
     targetChar=nil,
@@ -1896,8 +1500,6 @@ Flick={
     hpBefore=100,
     verifyStart=0,
     retriesLeft=2,
-    hitStreak=0,
-    missStreak=0,
     lastFlickEnd=0,
     triggeredBy="manual",
     keyHeld=false,
@@ -1905,9 +1507,6 @@ Flick={
     returnStartCF=nil,
     returnTargetCF=nil,
     holdStartTick=0,
-    snapPhase=1,
-    hitSoundConfirmed=false,
-    startedAt=0,
 }
 function FindMurderQueue()
     local origin=Cache.HRPs[LP] and Cache.HRPs[LP].Position or Camera.CFrame.Position
@@ -1948,8 +1547,6 @@ function StartFlick(target,triggeredBy)
     Flick.active=true
     Flick.phase="snap"
     Flick.snapStartTick=tick()
-    Flick.startedAt=tick()
-    Flick.snapPhase=1
     Flick.shotsFired=0
     Flick.killed=false
     Flick.hitVerified=false
@@ -2085,8 +1682,6 @@ RS:BindToRenderStep(HB_X.."Flick",Enum.RenderPriority.Camera.Value+10,function(d
             pcall(ReputationUpdate,tp,true)
             pcall(BlockchainAdd,"KILL:"..tp.Name)
             MetaLearnUpdate(1)
-            Flick.hitStreak=Flick.hitStreak+1
-            Flick.missStreak=0
             EndFlick()
             return
         end
@@ -2102,7 +1697,6 @@ RS:BindToRenderStep(HB_X.."Flick",Enum.RenderPriority.Camera.Value+10,function(d
                 return
             end
             MetaLearnUpdate(0)
-            Flick.missStreak=Flick.missStreak+1
             EndFlick()
         end
     end
@@ -2180,8 +1774,6 @@ LP.Chatted:Connect(function(msg)
         end
     elseif cmd=="save" then
         HB_Toast("Salvo","success")
-    elseif cmd=="status" then
-        HB_Toast(string.format("K:%d D:%d NN:%d",S.Kills,S.Deaths,NNReal.trained),"info")
     end
 end)
 task.spawn(function()
@@ -2189,7 +1781,6 @@ task.spawn(function()
         pcall(SquadDetect)
         pcall(EmotionUpdate)
         pcall(GameStateRecon)
-        pcall(AntiAttribution,LP)
     end
 end)
 task.spawn(function()
@@ -2197,8 +1788,6 @@ task.spawn(function()
         pcall(SnapshotState)
         pcall(AdversarialTick)
         pcall(SelfPlayTick)
-        pcall(CrossGameTransfer)
-        pcall(FederatedAggregate)
     end
 end)
 task.spawn(function()
@@ -2213,7 +1802,6 @@ end)
 task.spawn(function()
     while task.wait(5) do
         pcall(MultiRoundPlan)
-        pcall(MetaGameAnalyze)
         pcall(RoleRotation)
         pcall(LegendaryCheck)
     end
@@ -2221,63 +1809,8 @@ end)
 task.spawn(function()
     while task.wait(1) do
         pcall(AntiAntiCheatCheck)
-        pcall(AdaptiveRateCheck)
-        pcall(PlausibleDefense)
     end
 end)
-task.spawn(function()
-    while task.wait(1/30) do
-        if S.TrigOn then
-            local mouse=UIS:GetMouseLocation()
-            local best,bestD=nil,S.TrigRad
-            for _,p in ipairs(Cache.List) do
-                if p~=LP and GetRole(p)=="Murderer" then
-                    local head=Cache.Heads[p]
-                    if head then
-                        local sp,on=Camera:WorldToViewportPoint(head.Position)
-                        if on then
-                            local d=(Vector2.new(sp.X,sp.Y)-mouse).Magnitude
-                            if d<bestD then
-                                bestD=d
-                                best=p
-                            end
-                        end
-                    end
-                end
-            end
-            if best then
-                local w=FindWeapon()
-                if w then
-                    local head=Cache.Heads[best]
-                    if head then
-                        local eq=LP.Character and LP.Character:FindFirstChildOfClass("Tool")
-                        if eq~=w then
-                            EquipWeapon(w)
-                            task.wait(0.05)
-                            eq=LP.Character:FindFirstChildOfClass("Tool")
-                        end
-                        if eq and not IsWeaponOnCooldown(eq) then
-                            SilentFire(eq,head.Position)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(1/30) do
-        if S.StickyAim and StickyAimData.player then
-            local hrp=Cache.HRPs[StickyAimData.player]
-            if hrp and tick()<StickyAimData.until_ then
-                local sp,on=Camera:WorldToViewportPoint(hrp.Position)
-            else
-                StickyAimData.player=nil
-            end
-        end
-    end
-end)
-print("[HB] ✅ PARTE 3/5 ok")
 UI={}
 UI.Registered={}
 UI.TabButtons={}
@@ -2334,12 +1867,24 @@ HB_Stroke(UI_sidebar,Palette.Border,1,0.5)
 UI_tabScroll=HB_Create("ScrollingFrame",{Size=UDim2.new(1,-12,1,-12),Position=UDim2.new(0,6,0,6),BackgroundTransparency=1,ScrollBarThickness=0,CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y},UI_sidebar)
 UI.Content=HB_Create("Frame",{Size=UDim2.new(1,-14*3-190,1,-210),Position=UDim2.new(0,14+190+14,0,124),BackgroundTransparency=1,ZIndex=3},UI_main)
 UI_TabsList={
-    {icon="🎯",name="Aimbot"},{icon="⚔",name="Flick"},{icon="◉",name="ESP"},
-    {icon="✦",name="Visual"},{icon="▤",name="Stats"},{icon="◈",name="IA"},
-    {icon="⚡",name="RevIA"},{icon="🧠",name="RevHuman"},{icon="⚙",name="RevPhys"},
-    {icon="🎭",name="RevSocial"},{icon="🔧",name="RevArch"},{icon="💫",name="RevFeat"},
-    {icon="🎮",name="RevGame"},{icon="🛡",name="RevStealth"},{icon="🌀",name="RevMad"},
-    {icon="🔬",name="Innova"},{icon="💎",name="Revolu"},{icon="🎨",name="Config"},
+    {icon="🎯",name="Aimbot"},
+    {icon="⚔",name="Flick"},
+    {icon="◉",name="ESP"},
+    {icon="✦",name="Visual"},
+    {icon="▤",name="Stats"},
+    {icon="◈",name="IA"},
+    {icon="⚡",name="RevIA"},
+    {icon="🧠",name="RevHuman"},
+    {icon="⚙",name="RevPhys"},
+    {icon="🎭",name="RevSocial"},
+    {icon="🔧",name="RevArch"},
+    {icon="💫",name="RevFeat"},
+    {icon="🎮",name="RevGame"},
+    {icon="🛡",name="RevStealth"},
+    {icon="🌀",name="RevMad"},
+    {icon="🔬",name="Innova"},
+    {icon="💎",name="Revolu"},
+    {icon="🎨",name="Config"},
 }
 for _,t in ipairs(UI_TabsList) do
     local sf=HB_Create("ScrollingFrame",{Name=t.name,Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,ScrollBarThickness=4,ScrollBarImageColor3=Palette.Accent,CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,Visible=false},UI.Content)
@@ -2541,20 +2086,21 @@ Cmp.Keybind=function(parent,opts,y)
     Cmp_reg(holder,text,nil)
     return y+h+8
 end
+print("[HB] ✅ PARTE 3/4 ok")
 P=UI.TabContents
 p=P["Aimbot"]
 y=0
 y=Cmp.Section(p,"🎯 AIMBOT",y)
-y=Cmp.Toggle(p,{text="Auto Flick",default=S.AutoFlick,callback=function(v) S.AutoFlick=v end},y)
+y=Cmp.Toggle(p,{text="Auto Flick",default=true,callback=function(v) S.AutoFlick=v end},y)
 y=Cmp.Keybind(p,{text="Flick Key",default=S.FlickKey,callback=function(kc) S.FlickKey=kc end},y)
-y=Cmp.Slider(p,{text="Align Tolerance",min=1,max=15,default=S.AlignTol,suffix="°",callback=function(v) S.AlignTol=v end},y)
-y=Cmp.Slider(p,{text="Retries",min=0,max=3,default=S.Retries,callback=function(v) S.Retries=v end},y)
+y=Cmp.Slider(p,{text="Align Tolerance",min=1,max=15,default=4,suffix="°",callback=function(v) S.AlignTol=v end},y)
+y=Cmp.Slider(p,{text="Retries",min=0,max=3,default=2,callback=function(v) S.Retries=v end},y)
 y=Cmp.Section(p,"TRIGGER",y)
-y=Cmp.Toggle(p,{text="Trigger Bot",default=S.TrigOn,callback=function(v) S.TrigOn=v end},y)
-y=Cmp.Slider(p,{text="Radius",min=10,max=200,default=S.TrigRad,suffix="px",callback=function(v) S.TrigRad=v end},y)
+y=Cmp.Toggle(p,{text="Trigger Bot",default=false,callback=function(v) S.TrigOn=v end},y)
+y=Cmp.Slider(p,{text="Radius",min=10,max=200,default=60,suffix="px",callback=function(v) S.TrigRad=v end},y)
 y=Cmp.Section(p,"ANTI-DETECT",y)
-y=Cmp.Toggle(p,{text="Rate Limiter",default=S.RateLimit,callback=function(v) S.RateLimit=v end},y)
-y=Cmp.Toggle(p,{text="Fake Miss",default=S.FakeMiss,callback=function(v) S.FakeMiss=v end},y)
+y=Cmp.Toggle(p,{text="Rate Limiter",default=true,callback=function(v) S.RateLimit=v end},y)
+y=Cmp.Toggle(p,{text="Fake Miss",default=false,callback=function(v) S.FakeMiss=v end},y)
 y=Cmp.Toggle(p,{text="Anti-Flick Block",default=true,callback=function(v) S.AntiFlickBlock=v end},y)
 y=Cmp.Toggle(p,{text="Hitscan Opt",default=true,callback=function(v) S.HitscanOpt=v end},y)
 y=Cmp.Toggle(p,{text="FPS Adaptive",default=true,callback=function(v) S.FPSAdaptive=v end},y)
@@ -2574,9 +2120,9 @@ y=Cmp.Slider(p,{text="Strength",min=0,max=100,default=70,suffix="%",callback=fun
 p=P["ESP"]
 y=0
 y=Cmp.Section(p,"ESP",y)
-y=Cmp.Toggle(p,{text="ESP Ativado",default=S.ESP,callback=function(v) S.ESP=v end},y)
-y=Cmp.Toggle(p,{text="Box + Tracer",default=true,callback=function(v) S.ESPBox=v end},y)
-y=Cmp.Slider(p,{text="Espessura",min=1,max=4,default=S.ESPThick,callback=function(v) S.ESPThick=v end},y)
+y=Cmp.Toggle(p,{text="ESP Ativado",default=false,callback=function(v) S.ESP=v end},y)
+y=Cmp.Toggle(p,{text="Box + Tracer",default=true},y)
+y=Cmp.Slider(p,{text="Espessura",min=1,max=4,default=2,callback=function(v) S.ESPThick=v end},y)
 y=Cmp.Section(p,"AVANÇADO",y)
 y=Cmp.Toggle(p,{text="Chams (Highlight)",default=false,callback=function(v) S.Chams=v end},y)
 y=Cmp.Toggle(p,{text="ESP Arrows",default=false,callback=function(v) S.ESPArrows=v end},y)
@@ -2586,9 +2132,9 @@ y=Cmp.Toggle(p,{text="Timeline Predictor",default=false,callback=function(v) S.T
 p=P["Visual"]
 y=0
 y=Cmp.Section(p,"HUD",y)
-y=Cmp.Toggle(p,{text="Hitmarker",default=S.Hitmark,callback=function(v) S.Hitmark=v end},y)
-y=Cmp.Toggle(p,{text="Kill Feed",default=S.KillFeed,callback=function(v) S.KillFeed=v end},y)
-y=Cmp.Toggle(p,{text="Crosshair",default=S.Cross,callback=function(v) S.Cross=v end},y)
+y=Cmp.Toggle(p,{text="Hitmarker",default=true,callback=function(v) S.Hitmark=v end},y)
+y=Cmp.Toggle(p,{text="Kill Feed",default=true,callback=function(v) S.KillFeed=v end},y)
+y=Cmp.Toggle(p,{text="Crosshair",default=false,callback=function(v) S.Cross=v end},y)
 y=Cmp.Section(p,"CROSSHAIR",y)
 y=Cmp.Dropdown(p,{text="Estilo",options={"Dot","Cross","Circle","Hybrid"},default="Cross",callback=function(o) S.CrossStyle=o end},y)
 y=Cmp.Slider(p,{text="Tamanho",min=4,max=30,default=12,callback=function(v) S.CrossSize=v end},y)
@@ -2600,19 +2146,14 @@ HB_Corner(UI_statsBox,8)
 UI.StatsDisplay=HB_Create("TextLabel",{Size=UDim2.new(1,-20,1,-20),Position=UDim2.new(0,10,0,10),BackgroundTransparency=1,Text="",Font=Enum.Font.Code,TextSize=12,TextColor3=Palette.TextHigh,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,TextWrapped=true},UI_statsBox)
 y=y+210
 y=Cmp.Button(p,{text="Resetar",danger=true,callback=function()
-    S.Kills=0
-    S.Deaths=0
-    S.Hits=0
-    S.Misses=0
-    S.Streak=0
-    S.BestStreak=0
+    S.Kills=0 S.Deaths=0 S.Hits=0 S.Misses=0 S.Streak=0 S.BestStreak=0
     Acc.shots={}
 end},y)
 p=P["IA"]
 y=0
 y=Cmp.Section(p,"IA CORE",y)
 y=Cmp.Toggle(p,{text="IA On",default=true,callback=function(v) S.AIOn=v end},y)
-y=Cmp.Toggle(p,{text="NN Real",default=true,callback=function(v) S.NNReal=v end},y)
+y=Cmp.Toggle(p,{text="NN Real",default=true},y)
 y=Cmp.Slider(p,{text="NN Rate",min=1,max=50,default=10,suffix="‰",callback=function(v) S.NNRate=v/1000 end},y)
 p=P["RevIA"]
 y=0
@@ -2652,15 +2193,11 @@ y=Cmp.Toggle(p,{text="Misdirect",default=true,callback=function(v) S.REV_SOCIAL.
 y=Cmp.Toggle(p,{text="Bait",default=true,callback=function(v) S.REV_SOCIAL.bait=v end},y)
 y=Cmp.Toggle(p,{text="Anti-Report",default=true,callback=function(v) S.REV_SOCIAL.antiReport=v end},y)
 y=Cmp.Toggle(p,{text="Skill Curve",default=true,callback=function(v) S.REV_SOCIAL.skillCurve=v end},y)
-y=Cmp.Toggle(p,{text="P2P",default=false,callback=function(v) S.REV_SOCIAL.p2p=v end},y)
-y=Cmp.Toggle(p,{text="ZK Proof",default=false,callback=function(v) S.REV_SOCIAL.zkProof=v end},y)
 p=P["RevArch"]
 y=0
 y=Cmp.Section(p,"🔧 ARQUITETURA",y)
 y=Cmp.Toggle(p,{text="Rollback",default=true,callback=function(v) S.REV_ARCH.rollback=v end},y)
 y=Cmp.Toggle(p,{text="Diff Sync",default=true,callback=function(v) S.REV_ARCH.diffSync=v end},y)
-y=Cmp.Toggle(p,{text="Bytecode Cache",default=true,callback=function(v) S.REV_ARCH.bytecode=v end},y)
-y=Cmp.Toggle(p,{text="Hot-Swap",default=true,callback=function(v) S.REV_ARCH.hotSwap=v end},y)
 p=P["RevFeat"]
 y=0
 y=Cmp.Section(p,"💫 FEATURES",y)
@@ -2684,7 +2221,6 @@ y=Cmp.Toggle(p,{text="Jitter Dist",default=true,callback=function(v) S.REV_STEAL
 y=Cmp.Toggle(p,{text="Anti-Anti-Cheat",default=true,callback=function(v) S.REV_STEALTH.antiAntiCheat=v end},y)
 y=Cmp.Toggle(p,{text="Adaptive Rate",default=true,callback=function(v) S.REV_STEALTH.adaptiveRate=v end},y)
 y=Cmp.Toggle(p,{text="Plausible",default=true,callback=function(v) S.REV_STEALTH.plausible=v end},y)
-y=Cmp.Toggle(p,{text="Steganography",default=true,callback=function(v) S.REV_STEALTH.steganog=v end},y)
 p=P["RevMad"]
 y=0
 y=Cmp.Section(p,"🌀 MAD",y)
@@ -2702,53 +2238,11 @@ y=Cmp.Toggle(p,{text="Recursive",default=true,callback=function(v) S.REV_MAD.rec
 p=P["Innova"]
 y=0
 y=Cmp.Section(p,"🔬 INNOVATIONS",y)
-y=Cmp.Toggle(p,{text="1. Flick Preview",default=false,callback=function(v) S.FlickPreview=v end},y)
-y=Cmp.Toggle(p,{text="2. Flick Trails",default=false,callback=function(v) S.FlickTrails=v end},y)
-y=Cmp.Toggle(p,{text="3. Miss Logger",default=false,callback=function(v) S.MissLogger=v end},y)
-y=Cmp.Toggle(p,{text="4. Weapon Profiles",default=false,callback=function(v) S.WeaponProfiles=v end},y)
-y=Cmp.Toggle(p,{text="5. Flick Heatmap",default=false,callback=function(v) S.FlickHeatmap=v end},y)
-y=Cmp.Toggle(p,{text="6. Predictable Flag",default=true,callback=function(v) S.PredictableFlag=v end},y)
-y=Cmp.Toggle(p,{text="7. Priority Queue",default=false,callback=function(v) S.PriorityQueue=v end},y)
-y=Cmp.Toggle(p,{text="8. Post-Flick Stats",default=true,callback=function(v) S.PostFlickStats=v end},y)
-y=Cmp.Toggle(p,{text="9. ESP Skeleton",default=false,callback=function(v) S.ESPSkeleton=v end},y)
-y=Cmp.Toggle(p,{text="10. ESP Arrows",default=false,callback=function(v) S.ESPArrows=v end},y)
-y=Cmp.Toggle(p,{text="11. Chams",default=false,callback=function(v) S.Chams=v end},y)
-y=Cmp.Toggle(p,{text="13. Radar",default=false,callback=function(v) S.Radar=v end},y)
-y=Cmp.Toggle(p,{text="14. Muzzle Flash",default=false,callback=function(v) S.MuzzleFlash=v end},y)
-y=Cmp.Toggle(p,{text="15. Footstep ESP",default=false,callback=function(v) S.FootstepESP=v end},y)
-y=Cmp.Toggle(p,{text="16. Personality",default=true,callback=function(v) S.PersonalityProfiles=v end},y)
-y=Cmp.Toggle(p,{text="17. Confidence Bar",default=true,callback=function(v) S.ConfidenceBar=v end},y)
-y=Cmp.Toggle(p,{text="18. Adaptive Snap",default=true,callback=function(v) S.AdaptiveSnap=v end},y)
-y=Cmp.Toggle(p,{text="19. Weapon Learning",default=false,callback=function(v) S.WeaponLearning=v end},y)
-y=Cmp.Toggle(p,{text="20. Anti-Spectate",default=false,callback=function(v) S.AntiSpectate=v end},y)
-y=Cmp.Toggle(p,{text="21. Round Faker",default=false,callback=function(v) S.RoundFaker=v end},y)
-y=Cmp.Toggle(p,{text="22. Latency Spoofer",default=false,callback=function(v) S.LatencySpoof=v end},y)
-y=Cmp.Toggle(p,{text="23. Auto-Reply",default=false,callback=function(v) S.AutoReplyAntiCheat=v end},y)
-y=Cmp.Toggle(p,{text="24. Quick Panel",default=false,callback=function(v) S.QuickPanel=v end},y)
-y=Cmp.Toggle(p,{text="25. Presets",default=false,callback=function(v) S.PresetsEnabled=v end},y)
-y=Cmp.Toggle(p,{text="26. Chat Bot",default=false,callback=function(v) S.ChatBot=v end},y)
-y=Cmp.Toggle(p,{text="28. K/D Chart",default=false,callback=function(v) S.KDChart=v end},y)
-y=Cmp.Toggle(p,{text="29. Profile Panel",default=false,callback=function(v) S.PlayerProfile=v end},y)
-y=Cmp.Toggle(p,{text="30. Threat Panel",default=false,callback=function(v) S.ThreatLivePanel=v end},y)
-p=P["Revolu"]
-y=0
-y=Cmp.Section(p,"💎 REVOLUTIONARIES",y)
-y=Cmp.Toggle(p,{text="1. DNA System",default=false,callback=function(v) S.DNASystem=v end},y)
-y=Cmp.Toggle(p,{text="2. Timeline Predictor",default=false,callback=function(v) S.TimelinePredictor=v end},y)
-y=Cmp.Toggle(p,{text="3. Crowd Intelligence",default=false,callback=function(v) S.CrowdIntelligence=v end},y)
-y=Cmp.Toggle(p,{text="4. Behavioral Mirror",default=false,callback=function(v) S.BehavioralMirror=v end},y)
-y=Cmp.Toggle(p,{text="5. Dream Simulation",default=false,callback=function(v) S.DreamSimulation=v end},y)
-y=Cmp.Toggle(p,{text="6. Live Threat Meter",default=true,callback=function(v) S.LiveThreatMeter=v end},y)
-y=Cmp.Toggle(p,{text="7. Reverse Engineering",default=false,callback=function(v) S.ReverseEngineering=v end},y)
-y=Cmp.Toggle(p,{text="8. Living Map",default=true,callback=function(v) S.LivingMap=v end},y)
-y=Cmp.Toggle(p,{text="9. Squad Mimicry",default=false,callback=function(v) S.SquadMimicry=v end},y)
-y=Cmp.Toggle(p,{text="10. A/B Testing",default=true,callback=function(v) S.ABTesting=v end},y)
-y=Cmp.Toggle(p,{text="11. Rhythm Flick",default=false,callback=function(v) S.RhythmFlick=v end},y)
-y=Cmp.Toggle(p,{text="12. Prediction Market",default=false,callback=function(v) S.PredMarket=v end},y)
-y=Cmp.Toggle(p,{text="13. Death Recap 3D",default=true,callback=function(v) S.DeathRecap3D=v end},y)
-y=Cmp.Toggle(p,{text="14. Anti-Meta Adapt",default=true,callback=function(v) S.AntiMetaAdapt=v end},y)
-y=Cmp.Toggle(p,{text="15. Emotional AI",default=true,callback=function(v) S.EmotionalAI=v end},y)
-y=Cmp.Toggle(p,{text="16. Legacy Mode",default=true,callback=function(v) S.LegacyMode=v end},y)
+y=Cmp.Toggle(p,{text="Personality Profiles",default=true},y)
+y=Cmp.Toggle(p,{text="Chams",default=false,callback=function(v) S.Chams=v end},y)
+y=Cmp.Toggle(p,{text="Radar",default=false,callback=function(v) S.Radar=v end},y)
+y=Cmp.Toggle(p,{text="Timeline Predictor",default=false,callback=function(v) S.TimelinePredictor=v end},y)
+y=Cmp.Toggle(p,{text="Muzzle Flash",default=true},y)
 p=P["Config"]
 y=0
 y=Cmp.Section(p,"🎨 TEMA",y)
@@ -2766,19 +2260,6 @@ end},y)
 y=Cmp.Section(p,"SISTEMA",y)
 y=Cmp.Toggle(p,{text="Auto Save",default=true,callback=function(v) S.AutoSave=v end},y)
 y=Cmp.Toggle(p,{text="Chat Commands",default=true,callback=function(v) S.ChatCommands=v end},y)
-y=Cmp.Section(p,"AÇÕES",y)
-y=Cmp.Button(p,{text="Exportar Stats",callback=function()
-    local d={kills=S.Kills,deaths=S.Deaths,nnTrained=NNReal.trained}
-    if setclipboard then
-        setclipboard(HttpService:JSONEncode(d))
-        HB_Toast("Stats copiadas","success")
-    end
-end},y)
-y=Cmp.Button(p,{text="Reset Layout",danger=true,callback=function()
-    UI_main.Position=UDim2.new(0.5,0,0.5,0)
-    UI_uiScale.Scale=UI_scale
-    HB_Toast("Layout resetado","info")
-end},y)
 UI_dragState={active=false,start=nil,origin=nil}
 UIS.InputBegan:Connect(function(input)
     if input.UserInputType~=Enum.UserInputType.MouseButton1 then
@@ -2806,9 +2287,7 @@ UIS.InputEnded:Connect(function(input)
     if input.UserInputType~=Enum.UserInputType.MouseButton1 then
         return
     end
-    if UI_dragState.active then
-        UI_dragState.active=false
-    end
+    UI_dragState.active=false
 end)
 ESP_GUI=HB_Create("ScreenGui",{Name="HB_ESP_Overlay",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=90},PG)
 ESP_HOLDER=HB_Create("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},ESP_GUI)
@@ -2838,33 +2317,6 @@ end
 CROSSHAIR=HB_Create("Frame",{Size=UDim2.new(0,40,0,40),Position=UDim2.new(0.5,-20,0.5,-20),BackgroundTransparency=1,Visible=S.Cross,ZIndex=40},HUD_GUI)
 for _,cfg in ipairs({{0,-12,2,8},{0,12,2,8},{-12,0,8,2},{12,0,8,2}}) do
     HB_Create("Frame",{Size=UDim2.new(0,cfg[3],0,cfg[4]),Position=UDim2.new(0.5,cfg[1],0.5,cfg[2]),AnchorPoint=Vector2.new(0.5,0.5),BackgroundColor3=Color3.fromRGB(220,40,40),BorderSizePixel=0},CROSSHAIR)
-end
-CONF_GUI=HB_Create("ScreenGui",{Name="HB_Confidence",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=87},PG)
-CONF_FRAME=HB_Create("Frame",{Size=UDim2.new(0,200,0,30),Position=UDim2.new(0.5,-100,1,-60),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.3,BorderSizePixel=0,Visible=false,ZIndex=60},CONF_GUI)
-HB_Corner(CONF_FRAME,8)
-HB_Stroke(CONF_FRAME,Palette.Accent,1.5,0.3)
-CONF_FILL=HB_Create("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=Color3.fromRGB(0,210,120),BorderSizePixel=0,ZIndex=61},CONF_FRAME)
-HB_Corner(CONF_FILL,8)
-CONF_LABEL=HB_Create("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="Confidence 0%",Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Color3.fromRGB(245,245,250),ZIndex=62},CONF_FRAME)
-THREAT_GUI=HB_Create("ScreenGui",{Name="HB_ThreatMeter",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=88},PG)
-THREAT_FRAME=HB_Create("Frame",{Size=UDim2.new(0,220,0,34),Position=UDim2.new(1,-240,0,130),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.2,BorderSizePixel=0,Visible=false,ZIndex=70},THREAT_GUI)
-HB_Corner(THREAT_FRAME,8)
-THREAT_FILL=HB_Create("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=Color3.fromRGB(0,210,120),BorderSizePixel=0,ZIndex=71},THREAT_FRAME)
-HB_Corner(THREAT_FILL,8)
-THREAT_LABEL=HB_Create("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="Threat 0%",Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Color3.fromRGB(245,245,250),ZIndex=72},THREAT_FRAME)
-QUICK_GUI=HB_Create("ScreenGui",{Name="HB_QuickPanel",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=89},PG)
-QUICK_FRAME=HB_Create("Frame",{Size=UDim2.new(0,180,0,320),Position=UDim2.new(0,10,0.5,-160),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.15,BorderSizePixel=0,Visible=false,ZIndex=70},QUICK_GUI)
-HB_Corner(QUICK_FRAME,12)
-HB_Stroke(QUICK_FRAME,Color3.fromRGB(220,40,40),2,0.3)
-HB_Create("TextLabel",{Size=UDim2.new(1,0,0,26),BackgroundTransparency=1,Text="⚡ QUICK TOGGLES",Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Color3.fromRGB(245,245,250),ZIndex=71},QUICK_FRAME)
-QUICK_ICONS={{"Auto Flick","AutoFlick"},{"ESP","ESP"},{"Trigger","TrigOn"},{"Crosshair","Cross"},{"Kill Feed","KillFeed"},{"Hitmarker","Hitmark"},{"Radar","Radar"},{"Chams","Chams"}}
-for i,it in ipairs(QUICK_ICONS) do
-    local btn=HB_Create("TextButton",{Size=UDim2.new(1,-16,0,30),Position=UDim2.new(0,8,0,30+(i-1)*34),BackgroundColor3=S[it[2]] and Color3.fromRGB(40,80,40) or Color3.fromRGB(40,40,46),BorderSizePixel=0,Text=it[1],Font=Enum.Font.GothamMedium,TextSize=11,TextColor3=Color3.fromRGB(245,245,250),AutoButtonColor=false,Active=true,Selectable=false,ZIndex=71},QUICK_FRAME)
-    HB_Corner(btn,6)
-    btn.Activated:Connect(function()
-        S[it[2]]=not S[it[2]]
-        btn.BackgroundColor3=S[it[2]] and Color3.fromRGB(40,80,40) or Color3.fromRGB(40,40,46)
-    end)
 end
 HBShowHitmarker=function()
     if not S.Hitmark then
@@ -2957,12 +2409,8 @@ RS.RenderStepped:Connect(function()
     end
     for player,e in pairs(ESP_CACHE) do
         if not player.Parent then
-            if e.box then
-                e.box:Destroy()
-            end
-            if e.tracer then
-                e.tracer:Destroy()
-            end
+            if e.box then e.box:Destroy() end
+            if e.tracer then e.tracer:Destroy() end
             ESP_CACHE[player]=nil
         end
     end
@@ -3072,75 +2520,50 @@ RS.RenderStepped:Connect(function()
     CROSSHAIR.Visible=S.Cross==true
 end)
 task.spawn(function()
-    while task.wait(0.2) do
-        if S.ConfidenceBar and FindMurderQueue then
-            local q=FindMurderQueue()
-            if #q>0 then
-                CONF_FRAME.Visible=true
-                local t=q[1]
-                local h=Hst[t.player]
-                local conf=50
-                if h then
-                    conf=math.floor((1-h.jit/10)*100)
-                    conf=math.clamp(conf,20,99)
+    while task.wait(1/30) do
+        if S.TrigOn then
+            local flickBusy=Flick and (Flick.active or (tick()-(Flick.lastFlickEnd or 0))<0.25)
+            local suppressed=tick()<(TriggerSuppressUntil or 0)
+            local flickKeyHeld=Flick and Flick.keyHeld
+            if not flickBusy and not suppressed and not flickKeyHeld then
+                local mouse=UIS:GetMouseLocation()
+                local best,bestD=nil,S.TrigRad
+                for _,p2 in ipairs(Cache.List) do
+                    if p2~=LP and GetRole(p2)=="Murderer" then
+                        local head=Cache.Heads[p2]
+                        if head then
+                            local sp,on=Camera:WorldToViewportPoint(head.Position)
+                            if on then
+                                local d=(Vector2.new(sp.X,sp.Y)-mouse).Magnitude
+                                if d<bestD then
+                                    bestD=d
+                                    best=p2
+                                end
+                            end
+                        end
+                    end
                 end
-                TweenService:Create(CONF_FILL,TweenInfo.new(0.2),{Size=UDim2.new(conf/100,0,1,0)}):Play()
-                CONF_FILL.BackgroundColor3=conf>70 and Color3.fromRGB(0,210,120) or (conf>40 and Color3.fromRGB(255,180,0) or Color3.fromRGB(255,60,60))
-                CONF_LABEL.Text="Confidence "..conf.."%"
-            else
-                CONF_FRAME.Visible=false
+                if best then
+                    local w=FindWeapon()
+                    if w then
+                        local head=Cache.Heads[best]
+                        if head then
+                            local eq=LP.Character and LP.Character:FindFirstChildOfClass("Tool")
+                            if eq~=w then
+                                EquipWeapon(w)
+                                task.wait(0.05)
+                                eq=LP.Character:FindFirstChildOfClass("Tool")
+                            end
+                            if eq and not IsWeaponOnCooldown(eq) then
+                                SilentFire(eq,head.Position)
+                            end
+                        end
+                    end
+                end
             end
-        else
-            CONF_FRAME.Visible=false
         end
     end
 end)
-task.spawn(function()
-    while task.wait(0.5) do
-        if S.LiveThreatMeter then
-            THREAT_FRAME.Visible=true
-            local score=0
-            if S.FakeMiss==false then
-                score=score+15
-            end
-            if S.RateLimit==false then
-                score=score+15
-            end
-            if not S.Humanize then
-                score=score+20
-            end
-            if S.ESP then
-                score=score+10
-            end
-            score=math.clamp(score,0,100)
-            THREAT_FILL.Size=UDim2.new(score/100,0,1,0)
-            THREAT_FILL.BackgroundColor3=score>60 and Color3.fromRGB(255,60,60) or (score>30 and Color3.fromRGB(255,180,0) or Color3.fromRGB(0,210,120))
-            THREAT_LABEL.Text=string.format("Threat %d%%",score)
-        else
-            THREAT_FRAME.Visible=false
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(0.3) do
-        QUICK_FRAME.Visible=S.QuickPanel==true
-    end
-end)
-HBLoadPreset=function(name)
-    local presets={
-        RAGE={AutoFlick=true,AlignTol=2,Retries=3,FakeMiss=false,RateLimit=false},
-        LEGIT={AutoFlick=true,AlignTol=8,Retries=1,FakeMiss=true,RateLimit=true},
-        SNIPER={AutoFlick=true,AlignTol=3,Retries=2},
-    }
-    local preset=presets[name]
-    if not preset then
-        return
-    end
-    for k,v in pairs(preset) do
-        S[k]=v
-    end
-    HB_Toast("Preset: "..name,"success")
-end
 task.spawn(function()
     while task.wait(0.5) do
         if UI.StatsDisplay and UI.StatsDisplay.Parent then
@@ -3150,47 +2573,6 @@ task.spawn(function()
         end
     end
 end)
-_prevML=MetaLearnUpdate
-MetaLearnUpdate=function(perf)
-    _prevML(perf)
-    if perf and perf>0.5 then
-        local target=Flick and Flick.targetPlayer
-        if target then
-            local dist=0
-            if Cache.HRPs[target] then
-                dist=(Cache.HRPs[target].Position-Camera.CFrame.Position).Magnitude
-            end
-            HBKillFeed(target.Name,dist)
-            HBShowHitmarker()
-            pcall(BlockchainAdd,"KILL:"..target.Name)
-        end
-    end
-end
-HB_LegacySave=function()
-    local sess={start=S.SessionStart,end_=tick(),kills=S.Kills,deaths=S.Deaths}
-    sess.duration=sess.end_-sess.start
-    table.insert(RevGame.roleHistory,sess)
-    HB_Toast(string.format("Sessão salva: %dK %dD",sess.kills,sess.deaths),"success")
-end
-function HBShowAllRoles()
-    print("═══ ROLES ═══")
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP then
-            print(string.format("%s → %s | Tool: %s",p.Name,GetRole(p),HB_FindTool(p) or "nenhuma"))
-        end
-    end
-    print("═══════════════════════════════")
-end
-UI.switchTab("Aimbot")
-UI_main.Visible=true
-print("═══════════════════════════════════════════")
-print("✅ HELLBORN ULTIMATE v9.0 — CARREGADO!")
-print("═══════════════════════════════════════════")
-print("📊 46 features · 18 abas · ESP + HUD")
-print("🎯 ESP: 🔴 Murderer | 🔵 Sheriff | 🟢 Innocent")
-print("⌨️  Insert = menu | Q = Flick | F1 = Panic | F2 = Legacy save")
-print("💡 HBShowAllRoles() pra debug")
-print("═══════════════════════════════════════════")
 HB_WeaponProfiles={}
 HB_MissLog={}
 HB_FlickHeatmap={}
@@ -3199,50 +2581,7 @@ HB_KillStats={totalKills=0,bestTime=9999,avgTime=0,times={}}
 HB_Personalities={}
 HB_WeaponSigs={}
 HB_RoundHistory={}
-HB_AntiSpectate={active=false}
-HB_LatencySpoof={active=false,until_=0}
 HB_PersonalityTypes={CAMPER="🏕️ Camper",RUSHER="⚡ Rusher",JUKER="🌀 Juker",STALKER="👁️ Stalker",SNIPER="🎯 Sniper",CHAOTIC="💥 Chaotic"}
-HB_FlickPreviewGui=HB_Create("ScreenGui",{Name="HB_FlickPreview",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=88},PG)
-HB_FlickPreviewHolder=HB_Create("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},HB_FlickPreviewGui)
-HB_FlickTrailGui=HB_Create("ScreenGui",{Name="HB_FlickTrails",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=87},PG)
-HB_FlickTrailHolder=HB_Create("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},HB_FlickTrailGui)
-HB_HeatmapGui=HB_Create("ScreenGui",{Name="HB_FlickHeatmap",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=85},PG)
-HB_HeatmapFrame=HB_Create("Frame",{Size=UDim2.new(0,200,0,200),Position=UDim2.new(1,-220,1,-220),BackgroundColor3=Palette.Surface,BackgroundTransparency=0.3,BorderSizePixel=0,Visible=false,ZIndex=70},HB_HeatmapGui)
-HB_Corner(HB_HeatmapFrame,10)
-HB_Stroke(HB_HeatmapFrame,Palette.Accent,1.5,0.5)
-HB_Create("TextLabel",{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,Text="🗺️ Flick Heatmap",Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Palette.TextHigh,ZIndex=71},HB_HeatmapFrame)
-HB_PriorityGui=HB_Create("ScreenGui",{Name="HB_PriorityQueue",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=86},PG)
-HB_PriorityFrame=HB_Create("Frame",{Size=UDim2.new(0,200,0,80),Position=UDim2.new(0,10,0.5,-40),BackgroundColor3=Palette.Surface,BackgroundTransparency=0.2,BorderSizePixel=0,Visible=false,ZIndex=70},HB_PriorityGui)
-HB_Corner(HB_PriorityFrame,10)
-HB_Stroke(HB_PriorityFrame,Palette.Danger,2,0.3)
-HB_PriorityList=HB_Create("TextLabel",{Size=UDim2.new(1,-20,1,-20),Position=UDim2.new(0,10,0,10),BackgroundTransparency=1,Text="",Font=Enum.Font.Code,TextSize=11,TextColor3=Palette.TextHigh,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,TextWrapped=true},HB_PriorityFrame)
-HB_ProfileGui=HB_Create("ScreenGui",{Name="HB_PlayerProfile",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=88},PG)
-HB_ProfileFrame=HB_Create("Frame",{Size=UDim2.new(0,240,0,240),Position=UDim2.new(0,10,0,180),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.15,BorderSizePixel=0,Visible=false,ZIndex=70},HB_ProfileGui)
-HB_Corner(HB_ProfileFrame,10)
-HB_Stroke(HB_ProfileFrame,Color3.fromRGB(220,40,40),1.5,0.4)
-HB_Create("TextLabel",{Size=UDim2.new(1,0,0,24),BackgroundTransparency=1,Text="👤 Player Profiles",Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Palette.TextHigh,ZIndex=71},HB_ProfileFrame)
-HB_ProfileList=HB_Create("TextLabel",{Size=UDim2.new(1,-16,1,-32),Position=UDim2.new(0,8,0,28),BackgroundTransparency=1,Text="",Font=Enum.Font.Code,TextSize=10,TextColor3=Palette.TextHigh,TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,TextWrapped=true,ZIndex=71},HB_ProfileFrame)
-HB_ThreatPanelGui=HB_Create("ScreenGui",{Name="HB_ThreatPanel",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=89},PG)
-HB_ThreatPanelFrame=HB_Create("Frame",{Size=UDim2.new(0,220,0,30),Position=UDim2.new(0.5,-110,0,60),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.2,BorderSizePixel=0,Visible=false,ZIndex=70},HB_ThreatPanelGui)
-HB_Corner(HB_ThreatPanelFrame,8)
-HB_Stroke(HB_ThreatPanelFrame,Color3.fromRGB(220,40,40),1.5,0.3)
-HB_ThreatPanelLabel=HB_Create("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="THREAT: LOW",Font=Enum.Font.GothamBold,TextSize=13,TextColor3=Color3.fromRGB(0,210,120),ZIndex=71},HB_ThreatPanelFrame)
-HB_KDGui=HB_Create("ScreenGui",{Name="HB_KDChart",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=86},PG)
-HB_KDFrame=HB_Create("Frame",{Size=UDim2.new(0,260,0,140),Position=UDim2.new(1,-280,0,180),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.2,BorderSizePixel=0,Visible=false,ZIndex=70},HB_KDGui)
-HB_Corner(HB_KDFrame,10)
-HB_Stroke(HB_KDFrame,Color3.fromRGB(220,40,40),1.5,0.4)
-HB_Create("TextLabel",{Size=UDim2.new(1,0,0,22),BackgroundTransparency=1,Text="📊 K/D por Round",Font=Enum.Font.GothamBold,TextSize=11,TextColor3=Palette.TextHigh,ZIndex=71},HB_KDFrame)
-HB_KDBars=HB_Create("Frame",{Size=UDim2.new(1,-16,1,-32),Position=UDim2.new(0,8,0,26),BackgroundTransparency=1,ZIndex=71},HB_KDFrame)
-HB_MuzzleGui=HB_Create("ScreenGui",{Name="HB_MuzzleFlash",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=93},PG)
-HB_MuzzleHolder=HB_Create("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},HB_MuzzleGui)
-HB_FootstepGui=HB_Create("ScreenGui",{Name="HB_FootstepESP",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=87},PG)
-HB_FootstepHolder=HB_Create("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},HB_FootstepGui)
-HB_ArrowGui=HB_Create("ScreenGui",{Name="HB_ESPArrows",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=88},PG)
-HB_ArrowHolder=HB_Create("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},HB_ArrowGui)
-HB_SkeletonGui=HB_Create("ScreenGui",{Name="HB_ESPSkeleton",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=89},PG)
-HB_SkeletonHolder=HB_Create("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},HB_SkeletonGui)
-HB_SkelCache={}
-HB_ArrowCache={}
 HB_DNA={snapBase=0.045,angleBias=0,aggressionLevel=0.5,preferredDist=30,signature=nil,samples=0}
 HB_CrowdNet={}
 HB_Mirror={target=nil,style={},lastUpdate=0}
@@ -3257,994 +2596,253 @@ HB_DeathRecap={active=false,data=nil}
 HB_AntiMeta={lastPing=0,lastFps=60,lastPlayerCount=0,adaptations=0}
 HB_Emotion={state="neutral",samples=0}
 HB_Legacy={sessions={},bestKills=0,totalKills=0,totalDeaths=0,totalPlayTime=0,currentSession={start=tick(),kills=0,deaths=0}}
-HB_ChatReplies={"kkk puro talento mano","treinei muito pra isso","sorte","confia","👍","mano é só prática"}
-HB_Presets={
-    RAGE={AutoFlick=true,AlignTol=2,Retries=3,FakeMiss=false,RateLimit=false},
-    LEGIT={AutoFlick=true,AlignTol=8,Retries=1,FakeMiss=true,RateLimit=true,Humanize=true},
-    SNIPER={AutoFlick=true,AlignTol=3,Retries=2},
-    ANTIADMIN={AutoFlick=true,AdminOff=true,PSHide=true,FakeMiss=true,RateLimit=true,Humanize=true},
-}
-function HB_FlickPreviewShow(fromScreen,toScreen,color)
-    if not S.FlickPreview then
+HB_MultiModel={enabled=true,samples=3,kalmanWeight=0.4,nnWeight=0.4,activeInfWeight=0.2,lastPrediction=nil,hits=0,misses=0}
+HB_AdaptiveFOV={enabled=true,nearDist=15,farDist=80,nearFOV=90,farFOV=60,currentFOV=70,originalFOV=70,smooth=0.15,lastUpdate=0}
+HB_BallisticCurve={enabled=true,gravity=196.2,drag=0.015,wind=Vector3.zero,lastCalc=nil}
+HB_JukeMemory={enabled=true,memory={},maxPatterns=8,detectThreshold=0.4,lastCheck=0}
+HB_HitSound={enabled=true,soundId="rbxasset://sounds/electronicpingshort.wav",volume=0.4,pitchMin=1.1,pitchMax=1.4,lastPlay=0,cooldown=0.05,instance=nil}
+HB_KillConfirmSound={enabled=true,soundId="rbxasset://sounds/electronicpingshort.wav",volume=0.6,pitch=0.7,lastPlay=0,instance=nil}
+HB_AutoSave={enabled=true,interval=30,lastSave=0,saveKey="HB_AutoSave_Config",savesCount=0,showToast=false}
+function HB_InitHitSound()
+    if HB_HitSound.instance then
         return
     end
-    HB_FlickPreviewHolder:ClearAllChildren()
-    local dx=toScreen.X-fromScreen.X
-    local dy=toScreen.Y-fromScreen.Y
-    local len=math.sqrt(dx*dx+dy*dy)
-    local angle=math.deg(math.atan2(dy,dx))
-    local line=HB_Create("Frame",{Size=UDim2.new(0,len,0,2),Position=UDim2.new(0,fromScreen.X+dx/2,0,fromScreen.Y+dy/2),AnchorPoint=Vector2.new(0.5,0.5),BackgroundColor3=color or Color3.fromRGB(255,200,100),BackgroundTransparency=0.5,BorderSizePixel=0,Rotation=angle,ZIndex=60},HB_FlickPreviewHolder)
-    task.delay(0.6,function()
-        if line and line.Parent then
-            TweenService:Create(line,TweenInfo.new(0.2),{BackgroundTransparency=1}):Play()
-            task.wait(0.25)
-            line:Destroy()
+    HB_HitSound.instance=Instance.new("Sound")
+    HB_HitSound.instance.Name="HB_HitSound"
+    HB_HitSound.instance.SoundId=HB_HitSound.soundId
+    HB_HitSound.instance.Volume=HB_HitSound.volume
+    HB_HitSound.instance.Parent=SoundService
+end
+function HB_InitKillSound()
+    if HB_KillConfirmSound.instance then
+        return
+    end
+    HB_KillConfirmSound.instance=Instance.new("Sound")
+    HB_KillConfirmSound.instance.Name="HB_KillSound"
+    HB_KillConfirmSound.instance.SoundId=HB_KillConfirmSound.soundId
+    HB_KillConfirmSound.instance.Volume=HB_KillConfirmSound.volume
+    HB_KillConfirmSound.instance.PlaybackSpeed=HB_KillConfirmSound.pitch
+    HB_KillConfirmSound.instance.Parent=SoundService
+end
+function HB_PlayHitSound()
+    if not HB_HitSound.enabled then
+        return
+    end
+    if tick()-HB_HitSound.lastPlay<HB_HitSound.cooldown then
+        return
+    end
+    HB_HitSound.lastPlay=tick()
+    if not HB_HitSound.instance then
+        HB_InitHitSound()
+    end
+    if HB_HitSound.instance then
+        local s=HB_HitSound.instance:Clone()
+        s.PlaybackSpeed=HB_HitSound.pitchMin+math.random()*(HB_HitSound.pitchMax-HB_HitSound.pitchMin)
+        s.Volume=HB_HitSound.volume
+        s.Parent=SoundService
+        s:Play()
+        task.delay(1,function()
+            if s then
+                s:Destroy()
+            end
+        end)
+    end
+end
+function HB_PlayKillSound()
+    if not HB_KillConfirmSound.enabled then
+        return
+    end
+    if tick()-HB_KillConfirmSound.lastPlay<0.3 then
+        return
+    end
+    HB_KillConfirmSound.lastPlay=tick()
+    if not HB_KillConfirmSound.instance then
+        HB_InitKillSound()
+    end
+    if HB_KillConfirmSound.instance then
+        local s=HB_KillConfirmSound.instance:Clone()
+        s.Volume=HB_KillConfirmSound.volume
+        s.Parent=SoundService
+        s:Play()
+        task.delay(2,function()
+            if s then
+                s:Destroy()
+            end
+        end)
+    end
+end
+function HB_MultiModelPred(h,dt,pingSec,posNow)
+    if not HB_MultiModel.enabled then
+        return posNow
+    end
+    local preds={}
+    local kp=HB_KalmanPred(h.kalman,dt)
+    table.insert(preds,{pos=kp,weight=HB_MultiModel.kalmanWeight})
+    if NNReal.trained>50 then
+        local nnOut=HB_NNForward({h.vel.X,h.vel.Y,h.vel.Z,h.acc.X,h.acc.Y,h.acc.Z,h.stab,pingSec})
+        if nnOut then
+            table.insert(preds,{pos=posNow+Vector3.new(nnOut[1],nnOut[2],nnOut[3])*dt*10,weight=HB_MultiModel.nnWeight})
         end
-    end)
+    end
+    local totalW=0
+    for _,pr in ipairs(preds) do
+        totalW=totalW+pr.weight
+    end
+    if totalW==0 then
+        return posNow
+    end
+    local blended=Vector3.zero
+    for _,pr in ipairs(preds) do
+        blended=blended+pr.pos*(pr.weight/totalW)
+    end
+    HB_MultiModel.lastPrediction=blended
+    return blended
 end
-function HB_FlickTrailAdd(screenPos,color)
-    if not S.FlickTrails then
-        return
+function HB_BallisticCurveCalc(origin,target,tool)
+    if not HB_BallisticCurve.enabled then
+        return target
     end
-    local dot=HB_Create("Frame",{Size=UDim2.new(0,8,0,8),Position=UDim2.new(0,screenPos.X-4,0,screenPos.Y-4),BackgroundColor3=color or Color3.fromRGB(255,100,100),BackgroundTransparency=0.3,BorderSizePixel=0,ZIndex=55},HB_FlickTrailHolder)
-    HB_Corner(dot,4)
-    TweenService:Create(dot,TweenInfo.new(0.4),{Size=UDim2.new(0,2,0,2),BackgroundTransparency=1}):Play()
-    task.delay(0.5,function()
-        if dot.Parent then
-            dot:Destroy()
-        end
-    end)
+    local dist=(target-origin).Magnitude
+    local bspd=GetWeaponSpeed(tool)
+    local travelTime=dist/bspd
+    local gravityDrop=0.5*HB_BallisticCurve.gravity*travelTime*travelTime
+    local dragFactor=1-HB_BallisticCurve.drag*travelTime
+    return Vector3.new(target.X,target.Y+gravityDrop,target.Z)*1.0+Vector3.new(0,0,0)+Vector3.new(target.X,target.Y,target.Z)*0+Vector3.new(target.X,target.Y+gravityDrop,target.Z)*0+Vector3.new(0,0,0)+Vector3.new(target.X,target.Y+gravityDrop,target.Z)*(1)*0+Vector3.new(target.X,target.Y+gravityDrop*0+gravityDrop,target.Z)*0+Vector3.new(0,0,0)+Vector3.new(target.X*dragFactor/target.X,target.Y+gravityDrop,target.Z)
 end
-function HB_LogMissReason(reason,details)
-    if not S.MissLogger then
-        return
-    end
-    table.insert(HB_MissLog,{t=tick(),reason=reason,details=details})
-    if #HB_MissLog>100 then
-        table.remove(HB_MissLog,1)
-    end
-    print("[HB-Miss]",reason,details or "")
-end
-function HB_WeaponProfileTrack(weaponName,snap,hold,verify,hit)
-    if not S.WeaponProfiles then
-        return
-    end
-    local prof=HB_WeaponProfiles[weaponName]
-    if not prof then
-        prof={snap=snap,hold=hold,verify=verify,hits=0,misses=0,samples=0}
-        HB_WeaponProfiles[weaponName]=prof
-    end
-    prof.samples=prof.samples+1
-    if hit then
-        prof.hits=prof.hits+1
-        prof.snap=prof.snap*0.95+snap*0.05
-    else
-        prof.misses=prof.misses+1
-        prof.verify=math.min(prof.verify*1.05,0.8)
-    end
-end
-function HB_WeaponProfileApply(weaponName)
-    if not S.WeaponProfiles then
-        return
-    end
-    local prof=HB_WeaponProfiles[weaponName]
-    if prof and prof.samples>=10 and Flick then
-        Flick.snapDur=prof.snap
-        Flick.holdDur=prof.hold
-        Flick.verifyWait=prof.verify
-    end
-end
-function HB_HeatmapAdd(position)
-    if not S.FlickHeatmap then
-        return
-    end
-    table.insert(HB_FlickHeatmap,{x=position.X,z=position.Z,t=tick()})
-    if #HB_FlickHeatmap>300 then
-        table.remove(HB_FlickHeatmap,1)
-    end
-end
-function HB_PredictableTrack(playerName,hit)
-    if not S.PredictableFlag then
-        return
-    end
-    local t=HB_PredictableTargets[playerName]
-    if not t then
-        t={hits=0,misses=0}
-        HB_PredictableTargets[playerName]=t
-    end
-    if hit then
-        t.hits=t.hits+1
-    else
-        t.misses=t.misses+1
-    end
-end
-function HB_IsPredictable(playerName)
-    if not S.PredictableFlag then
-        return false
-    end
-    local t=HB_PredictableTargets[playerName]
-    if not t then
-        return false
-    end
-    local total=t.hits+t.misses
-    if total<3 then
-        return false
-    end
-    return (t.hits/total)>=0.8
-end
-function HB_PostFlickStats(flickTime,hit)
-    if not S.PostFlickStats then
-        return
-    end
-    HB_KillStats.totalKills=HB_KillStats.totalKills+1
-    if hit then
-        table.insert(HB_KillStats.times,flickTime)
-        if flickTime<HB_KillStats.bestTime then
-            HB_KillStats.bestTime=flickTime
-        end
-        local sum=0
-        for _,t in ipairs(HB_KillStats.times) do
-            sum=sum+t
-        end
-        HB_KillStats.avgTime=sum/#HB_KillStats.times
-    end
-end
-function HB_AnalyzePersonality(player)
-    local h=Hst[player]
-    if not h or #h.samples<20 then
+function HB_JukeMemoryAnalyze(player,h)
+    if not HB_JukeMemory.enabled or not h or #h.samples<10 then
         return nil
     end
-    local typ="STALKER"
-    local avgSpeed=0
-    local jukeCount=0
-    for i=2,#h.samples do
-        local d=(h.samples[i].pos-h.samples[i-1].pos).Magnitude
-        avgSpeed=avgSpeed+d
-        if i>3 then
-            local d1=(h.samples[i].pos-h.samples[i-1].pos).Unit
-            local d2=(h.samples[i-1].pos-h.samples[i-2].pos).Unit
-            if d1:Dot(d2)<0.3 then
-                jukeCount=jukeCount+1
+    local n=#h.samples
+    local movements={}
+    for i=n-9,n do
+        if i>1 and h.samples[i] and h.samples[i-1] then
+            local d=h.samples[i].pos-h.samples[i-1].pos
+            if d.Magnitude>0.1 then
+                table.insert(movements,d.Unit)
             end
         end
     end
-    avgSpeed=avgSpeed/math.max(1,#h.samples)
-    if jukeCount>8 then
-        typ="JUKER"
-    elseif avgSpeed>15 then
-        typ="RUSHER"
-    elseif avgSpeed<3 then
-        typ="CAMPER"
-    elseif h.chase then
-        typ="STALKER"
-    else
-        typ="CHAOTIC"
+    if #movements<5 then
+        return nil
     end
-    HB_Personalities[player]={type=typ,label=HB_PersonalityTypes[typ],speed=avgSpeed,jukes=jukeCount,t=tick()}
-end
-function HB_LearnWeapon(tool)
-    if not S.WeaponLearning or not tool then
-        return
+    local dirChanges=0
+    for i=2,#movements do
+        if movements[i]:Dot(movements[i-1])<HB_JukeMemory.detectThreshold then
+            dirChanges=dirChanges+1
+        end
     end
-    local n=tool.Name
-    HB_WeaponSigs[n]=HB_WeaponSigs[n] or {samples=0,lastFire=0,intervals={}}
-    local sig=HB_WeaponSigs[n]
-    local now=tick()
-    if sig.lastFire>0 then
-        local interval=now-sig.lastFire
-        if interval<2 then
-            table.insert(sig.intervals,interval)
-            if #sig.intervals>50 then
-                table.remove(sig.intervals,1)
+    local jukeType="straight"
+    if dirChanges>=3 then
+        jukeType="zigzag"
+    elseif dirChanges>=1 then
+        jukeType="single"
+    end
+    HB_JukeMemory.memory[player]=HB_JukeMemory.memory[player] or {patterns={},total=0}
+    local mem=HB_JukeMemory.memory[player]
+    mem.patterns[jukeType]=(mem.patterns[jukeType] or 0)+1
+    mem.lastJuke=jukeType
+    mem.total=mem.total+1
+    if mem.total%(HB_JukeMemory.maxPatterns*5)==0 then
+        local bestCount=0
+        for k,v in pairs(mem.patterns) do
+            if v>bestCount then
+                bestCount=v
+                mem.dominant=k
             end
         end
     end
-    sig.lastFire=now
-    sig.samples=sig.samples+1
+    return jukeType
 end
-function HB_LivingMapRecord(pos,event)
-    if not S.LivingMap then
+function HB_JukeMemoryPredict(player)
+    if not HB_JukeMemory.enabled then
+        return nil
+    end
+    local mem=HB_JukeMemory.memory[player]
+    if not mem or not mem.dominant then
+        return nil
+    end
+    return mem.dominant
+end
+function HB_UpdateAdaptiveFOV()
+    if not HB_AdaptiveFOV.enabled then
         return
     end
-    local key=string.format("%d_%d",math.floor(pos.X/20),math.floor(pos.Z/20))
-    HB_LivingMap.grid[key]=HB_LivingMap.grid[key] or {kills=0,deaths=0,camps=0,seen=0}
-    local cell=HB_LivingMap.grid[key]
-    cell.seen=cell.seen+1
-    if event=="kill" then
-        cell.kills=cell.kills+1
-    elseif event=="death" then
-        cell.deaths=cell.deaths+1
-    elseif event=="camp" then
-        cell.camps=cell.camps+1
-    end
-    HB_LivingMap.samples=HB_LivingMap.samples+1
-end
-function HB_DNAUpdate(snap,angle,dist,hit)
-    if not S.DNASystem then
-        return
-    end
-    local d=HB_DNA
-    d.samples=d.samples+1
-    d.snapBase=d.snapBase*0.98+snap*0.02
-    d.angleBias=d.angleBias*0.95+angle*0.05
-    d.preferredDist=d.preferredDist*0.95+dist*0.05
-    if hit then
-        d.aggressionLevel=math.min(1,d.aggressionLevel+0.01)
-    else
-        d.aggressionLevel=math.max(0,d.aggressionLevel-0.005)
-    end
-    if d.samples==50 or d.samples%100==0 then
-        d.signature=string.format("DNA-%X-%X-%X",math.floor(d.snapBase*10000),math.floor(d.angleBias*1000+500),math.floor(d.preferredDist))
-    end
-end
-function HB_CrowdPush(data)
-    if not S.CrowdIntelligence then
-        return
-    end
-    HB_CrowdNet[LP.UserId]={data=data,t=tick()}
-end
-function HB_CrowdPull()
-    if not S.CrowdIntelligence then
-        return {}
-    end
-    local result={}
-    for uid,entry in pairs(HB_CrowdNet) do
-        if uid~=LP.UserId and tick()-entry.t<10 then
-            result[uid]=entry.data
-        end
-    end
-    return result
-end
-function HB_ReverseEngStart()
-    HB_ReverseEng.recording=true
-    HB_ReverseEng.buffer={}
-    HB_Toast("🔴 Gravando seu estilo","warning")
-end
-function HB_ReverseEngStop()
-    HB_ReverseEng.recording=false
-    local buf=HB_ReverseEng.buffer
-    if #buf>10 then
-        local avgSnap=0
-        for _,v in ipairs(buf) do
-            avgSnap=avgSnap+v.snap
-        end
-        HB_ReverseEng.learned={snap=avgSnap/#buf,samples=#buf}
-        HB_Toast("✅ Estilo aprendido","success")
-    end
-end
-function HB_ABTestRecord(hit)
-    if not S.ABTesting then
-        return
-    end
-    local test=HB_ABTest
-    local active=test.useA and test.strategyA or test.strategyB
-    active.samples=active.samples+1
-    active.hitRate=active.hitRate*0.9+(hit and 1 or 0)*0.1
-    if active.samples>=30 then
-        if test.useA and test.strategyB.hitRate>test.strategyA.hitRate+0.1 then
-            test.useA=false
-        elseif not test.useA and test.strategyA.hitRate>test.strategyB.hitRate+0.1 then
-            test.useA=true
-        end
-    end
-end
-function HB_PredMarketBet()
-    if not S.PredMarket then
-        return
-    end
-    HB_PredMarket.activeBet={placedAt=tick(),target=0.2,amount=10}
-    HB_Toast("🎰 Aposta: <200ms","warning")
-end
-function HB_PredMarketResolve(hitTime,hit)
-    if not S.PredMarket or not HB_PredMarket.activeBet then
-        return
-    end
-    local bet=HB_PredMarket.activeBet
-    if hit and hitTime<bet.target then
-        HB_PredMarket.wins=HB_PredMarket.wins+1
-        HB_PredMarket.balance=HB_PredMarket.balance+bet.amount
-        HB_Toast("✅ Aposta ganha! +"..bet.amount,"success")
-    else
-        HB_PredMarket.losses=HB_PredMarket.losses+1
-        HB_PredMarket.balance=HB_PredMarket.balance-bet.amount
-        HB_Toast("❌ Aposta perdida! -"..bet.amount,"danger")
-    end
-    HB_PredMarket.activeBet=nil
-end
-function HB_DeathRecapStart()
-    if not S.DeathRecap3D then
-        return
-    end
-    HB_DeathRecap.active=true
-    local myPos=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") and LP.Character.HumanoidRootPart.Position
-    HB_DeathRecap.data={startT=tick(),myPos=myPos,killer=nil}
-    if myPos then
-        local closest,closestDist=nil,50
-        for _,p in ipairs(Players:GetPlayers()) do
-            if p~=LP then
-                local hrp=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+    local targetDist=HB_AdaptiveFOV.farDist
+    local closestDist=9999
+    local myHrp=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if myHrp then
+        for _,p2 in ipairs(Cache.List) do
+            if p2~=LP and GetRole(p2)=="Murderer" then
+                local hrp=Cache.HRPs[p2]
                 if hrp then
-                    local d=(hrp.Position-myPos).Magnitude
+                    local d=(hrp.Position-myHrp.Position).Magnitude
                     if d<closestDist then
                         closestDist=d
-                        closest=p
                     end
                 end
             end
         end
-        HB_DeathRecap.data.killer=closest and closest.Name or "?"
-        if closest then
-            HB_Toast("💀 Morto por: "..closest.Name,"danger")
-        end
     end
-    task.delay(4,function()
-        HB_DeathRecap.active=false
+    if closestDist<9999 then
+        targetDist=closestDist
+    end
+    local pct=math.clamp((targetDist-HB_AdaptiveFOV.nearDist)/(HB_AdaptiveFOV.farDist-HB_AdaptiveFOV.nearDist),0,1)
+    local targetFOV=HB_AdaptiveFOV.nearFOV+(HB_AdaptiveFOV.farFOV-HB_AdaptiveFOV.nearFOV)*pct
+    HB_AdaptiveFOV.currentFOV=HB_AdaptiveFOV.currentFOV+(targetFOV-HB_AdaptiveFOV.currentFOV)*HB_AdaptiveFOV.smooth
+    pcall(function()
+        Camera.FieldOfView=HB_AdaptiveFOV.currentFOV
     end)
 end
-function HB_LegacySessionSave()
-    if not S.LegacyMode then
+function HB_AutoSaveTick()
+    if not HB_AutoSave.enabled then
         return
     end
-    local sess=HB_Legacy.currentSession
-    sess.end_=tick()
-    sess.duration=sess.end_-sess.start
-    table.insert(HB_Legacy.sessions,sess)
-    if #HB_Legacy.sessions>50 then
-        table.remove(HB_Legacy.sessions,1)
+    if tick()-HB_AutoSave.lastSave<HB_AutoSave.interval then
+        return
     end
-    HB_Legacy.totalPlayTime=HB_Legacy.totalPlayTime+sess.duration
-    HB_Toast(string.format("Legacy: %dK %dD",sess.kills,sess.deaths),"success")
+    HB_AutoSave.lastSave=tick()
+    HB_AutoSave.savesCount=HB_AutoSave.savesCount+1
+    local snapshot={}
+    for k,v in pairs(S) do
+        if type(v)=="boolean" or type(v)=="number" or type(v)=="string" then
+            snapshot[k]=v
+        end
+    end
+    if Flick then
+        snapshot._snapDur=Flick.snapDur
+        snapshot._holdDur=Flick.holdDur
+        snapshot._verifyWait=Flick.verifyWait
+        snapshot._returnDur=Flick.returnDur
+    end
+    _G[HB_AutoSave.saveKey]=snapshot
 end
-task.spawn(function()
-    while task.wait(0.1) do
-        if HB_ReverseEng.recording and S.ReverseEngineering then
-            local cam=Camera.CFrame
-            table.insert(HB_ReverseEng.buffer,{snap=Flick and Flick.snapDur or 0.045,angle=cam.LookVector.Y,t=tick()})
-            if #HB_ReverseEng.buffer>500 then
-                table.remove(HB_ReverseEng.buffer,1)
-            end
+function HB_AutoSaveLoad()
+    local saved=_G[HB_AutoSave.saveKey]
+    if not saved then
+        return false
+    end
+    for k,v in pairs(saved) do
+        if k:sub(1,1)~="_" then
+            S[k]=v
         end
     end
-end)
-task.spawn(function()
-    while task.wait(3) do
-        if S.PersonalityProfiles then
-            for _,p in ipairs(Players:GetPlayers()) do
-                if p~=LP then
-                    pcall(HB_AnalyzePersonality,p)
-                end
-            end
-        end
+    if Flick then
+        if saved._snapDur then Flick.snapDur=saved._snapDur end
+        if saved._holdDur then Flick.holdDur=saved._holdDur end
+        if saved._verifyWait then Flick.verifyWait=saved._verifyWait end
+        if saved._returnDur then Flick.returnDur=saved._returnDur end
     end
-end)
-task.spawn(function()
-    while task.wait(1) do
-        if S.AdaptiveSnap and Flick then
-            local fps=FPS.cur or 60
-            local ping=LP:GetNetworkPing()
-            local target=0.045
-            if fps<30 then
-                target=0.08
-            elseif fps<50 then
-                target=0.06
-            elseif fps>100 then
-                target=0.035
-            end
-            target=target+ping*0.3
-            Flick.snapDur=Flick.snapDur*0.85+target*0.15
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(2) do
-        if S.AntiSpectate then
-            local specFound=false
-            for _,p in ipairs(Players:GetPlayers()) do
-                if p~=LP and p.CameraSubject then
-                    local sub=p.CameraSubject
-                    if sub==LP.Character or (sub and sub.Parent==LP.Character) then
-                        specFound=true
-                        break
-                    end
-                end
-            end
-            if specFound and not HB_AntiSpectate.active then
-                HB_AntiSpectate.active=true
-                S.AutoFlick=false
-                S.ESP=false
-                HB_Toast("🚨 Spectate detectado","danger")
-            elseif not specFound and HB_AntiSpectate.active then
-                HB_AntiSpectate.active=false
-            end
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(15) do
-        if S.LatencySpoof and math.random()<0.3 and not HB_LatencySpoof.active then
-            HB_LatencySpoof.active=true
-            HB_LatencySpoof.until_=tick()+math.random(1,3)
-        end
-        if HB_LatencySpoof.active and tick()>HB_LatencySpoof.until_ then
-            HB_LatencySpoof.active=false
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(5) do
-        if S.CrowdIntelligence then
-            HB_CrowdPush({pos=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") and LP.Character.HumanoidRootPart.Position,kills=S.Kills,t=tick()})
-        end
-        if S.BehavioralMirror then
-            local best,bestKills=nil,0
-            for _,p in ipairs(Players:GetPlayers()) do
-                if p~=LP then
-                    local h=Hst[p]
-                    if h and h.shotsHit and h.shotsHit>bestKills then
-                        bestKills=h.shotsHit
-                        best=p
-                    end
-                end
-            end
-            if best then
-                HB_Mirror.target=best
-                local h=Hst[best]
-                if h then
-                    HB_Mirror.style={avgSpeed=h.vel.Magnitude,aggression=h.chase and 0.9 or 0.4}
-                end
-            end
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(10) do
-        if S.DreamSimulation then
-            local now=tick()
-            if now-HB_DreamState.lastTrain>5 then
-                HB_DreamState.lastTrain=now
-                HB_DreamState.active=true
-                for _=1,20 do
-                    local inp={}
-                    for j=1,8 do
-                        inp[j]=math.random()*2-1
-                    end
-                    local target={math.random()-0.5,math.random()-0.5,math.random()-0.5}
-                    pcall(HB_NNTrain,inp,target)
-                    HB_DreamState.iterations=HB_DreamState.iterations+1
-                end
-                HB_DreamState.active=false
-            end
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(5) do
-        if S.SquadMimicry then
-            local myHrp=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-            if myHrp then
-                HB_SquadMimicry.squad={}
-                for _,p in ipairs(Players:GetPlayers()) do
-                    if p~=LP then
-                        local hrp=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-                        if hrp and (hrp.Position-myHrp.Position).Magnitude<25 then
-                            table.insert(HB_SquadMimicry.squad,p)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(0.1) do
-        if S.RhythmFlick and Flick then
-            HB_Rhythm.phase=HB_Rhythm.phase+0.1*HB_Rhythm.rate
-            local osc=math.sin(HB_Rhythm.phase)*HB_Rhythm.amplitude
-            Flick.snapDur=math.clamp(Flick.snapDur+osc*0.005,0.03,0.15)
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(3) do
-        if S.AntiMetaAdapt then
-            local ping=LP:GetNetworkPing()
-            local fps=FPS.cur or 60
-            local pCount=#Players:GetPlayers()
-            local am=HB_AntiMeta
-            if math.abs(ping-am.lastPing)>0.05 or math.abs(fps-am.lastFps)>20 or math.abs(pCount-am.lastPlayerCount)>3 then
-                if fps<30 then
-                    S.ESP=false
-                    S.Chams=false
-                    S.ESPSkeleton=false
-                end
-                if ping>0.15 and Flick then
-                    Flick.verifyWait=math.min(1.0,Flick.verifyWait+0.1)
-                end
-                am.adaptations=am.adaptations+1
-                am.lastPing=ping
-                am.lastFps=fps
-                am.lastPlayerCount=pCount
-            end
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(2) do
-        if S.EmotionalAI then
-            local recent=0
-            for _,k in ipairs(KillLog) do
-                if tick()-k.time<60 and not k.miss then
-                    recent=recent+1
-                end
-            end
-            if (S.Streak or 0)>=3 then
-                HB_Emotion.state="confident"
-            elseif recent<2 and S.Deaths>S.Kills then
-                HB_Emotion.state="tilted"
-            else
-                HB_Emotion.state="neutral"
-            end
-            if HB_Emotion.state=="tilted" and Flick then
-                Flick.snapDur=Flick.snapDur*1.1
-                S.AlignTol=math.min(15,(S.AlignTol or 4)+1)
-            elseif HB_Emotion.state=="confident" and Flick then
-                Flick.snapDur=Flick.snapDur*0.95
-                S.AlignTol=math.max(2,(S.AlignTol or 4)-0.5)
-            end
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(5) do
-        if S.LegacyMode then
-            local sess=HB_Legacy.currentSession
-            if S.Kills>sess.kills then
-                sess.kills=S.Kills
-                if S.Kills>HB_Legacy.bestKills then
-                    HB_Legacy.bestKills=S.Kills
-                end
-            end
-            if S.Deaths>sess.deaths then
-                sess.deaths=S.Deaths
-            end
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(1) do
-        if S.FlickHeatmap then
-            HB_HeatmapFrame.Visible=true
-            for _,c in ipairs(HB_HeatmapFrame:GetChildren()) do
-                if c:IsA("Frame") and c.Name=="Dot" then
-                    c:Destroy()
-                end
-            end
-            if #HB_FlickHeatmap>0 then
-                local minX,maxX=99999,-99999
-                local minZ,maxZ=99999,-99999
-                for _,pt in ipairs(HB_FlickHeatmap) do
-                    if pt.x<minX then
-                        minX=pt.x
-                    end
-                    if pt.x>maxX then
-                        maxX=pt.x
-                    end
-                    if pt.z<minZ then
-                        minZ=pt.z
-                    end
-                    if pt.z>maxZ then
-                        maxZ=pt.z
-                    end
-                end
-                local rangeX=math.max(maxX-minX,1)
-                local rangeZ=math.max(maxZ-minZ,1)
-                for _,pt in ipairs(HB_FlickHeatmap) do
-                    local nx=(pt.x-minX)/rangeX
-                    local nz=(pt.z-minZ)/rangeZ
-                    local dot=HB_Create("Frame",{Name="Dot",Size=UDim2.new(0,4,0,4),Position=UDim2.new(nx,-2,nz,20),BackgroundColor3=Color3.fromRGB(255,100,100),BackgroundTransparency=0.4,BorderSizePixel=0,ZIndex=72},HB_HeatmapFrame)
-                    HB_Corner(dot,2)
-                end
-            end
-        else
-            HB_HeatmapFrame.Visible=false
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(0.5) do
-        if S.PriorityQueue and FindMurderQueue then
-            HB_PriorityFrame.Visible=true
-            local q=FindMurderQueue()
-            local lines={}
-            for i=1,math.min(3,#q) do
-                local t=q[i]
-                local flag=HB_IsPredictable(t.player.Name) and " ⭐" or ""
-                table.insert(lines,string.format("%d. %s [%dm]%s",i,t.player.Name:sub(1,10),math.floor(t.dist),flag))
-            end
-            HB_PriorityList.Text=#lines>0 and table.concat(lines,"\n") or "Nenhum próximo"
-        else
-            HB_PriorityFrame.Visible=false
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(2) do
-        if S.PlayerProfile then
-            HB_ProfileFrame.Visible=true
-            local lines={}
-            for _,p in ipairs(Players:GetPlayers()) do
-                if p~=LP then
-                    local role=GetRole(p)
-                    local pers=HB_Personalities[p]
-                    local persLabel=pers and pers.label or "?"
-                    local flag=HB_IsPredictable(p.Name) and " ⭐" or ""
-                    local icon=role=="Murderer" and "🔴" or (role=="Sheriff" and "🔵" or "🟢")
-                    table.insert(lines,string.format("%s %s%s\n   %s",icon,p.Name:sub(1,14),flag,persLabel))
-                end
-            end
-            HB_ProfileList.Text=table.concat(lines,"\n")
-        else
-            HB_ProfileFrame.Visible=false
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(0.5) do
-        if S.ThreatLivePanel then
-            HB_ThreatPanelFrame.Visible=true
-            local alive=0
-            local murderers=0
-            for _,p in ipairs(Players:GetPlayers()) do
-                local ch=p.Character
-                local hum=ch and ch:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health>0 then
-                    alive=alive+1
-                    if GetRole(p)=="Murderer" then
-                        murderers=murderers+1
-                    end
-                end
-            end
-            local level="LOW"
-            local color=Color3.fromRGB(0,210,120)
-            if murderers>=2 or alive<=3 then
-                level="CRITICAL"
-                color=Color3.fromRGB(255,60,60)
-            elseif murderers>=1 or alive<=6 then
-                level="MEDIUM"
-                color=Color3.fromRGB(255,180,0)
-            end
-            HB_ThreatPanelLabel.Text=string.format("THREAT: %s | Alive: %d | M: %d",level,alive,murderers)
-            HB_ThreatPanelLabel.TextColor3=color
-        else
-            HB_ThreatPanelFrame.Visible=false
-        end
-    end
-end)
-task.spawn(function()
-    while task.wait(1) do
-        if S.KDChart and #HB_RoundHistory>0 then
-            HB_KDFrame.Visible=true
-            for _,c in ipairs(HB_KDBars:GetChildren()) do
-                c:Destroy()
-            end
-            local maxKills=5
-            local barW=math.min(20,(HB_KDBars.AbsoluteSize.X-10)/math.max(1,#HB_RoundHistory))
-            for i,r in ipairs(HB_RoundHistory) do
-                local h=(r.kills/maxKills)*(HB_KDBars.AbsoluteSize.Y-10)
-                local bar=HB_Create("Frame",{Size=UDim2.new(0,barW-2,0,h),Position=UDim2.new(0,(i-1)*barW,1,-h),BackgroundColor3=Color3.fromRGB(220,40,40),BorderSizePixel=0,ZIndex=71},HB_KDBars)
-                HB_Corner(bar,2)
-            end
-        else
-            HB_KDFrame.Visible=false
-        end
-    end
-end)
-RS.RenderStepped:Connect(function()
-    if not S.ESPArrows then
-        for _,a in pairs(HB_ArrowCache) do
-            if a and a.Parent then
-                a.Visible=false
-            end
-        end
-        return
-    end
-    local vpSize=Camera.ViewportSize
-    local cx,cy=vpSize.X/2,vpSize.Y/2
-    local radius=math.min(vpSize.X,vpSize.Y)*0.32
-    for _,player in ipairs(Players:GetPlayers()) do
-        if player~=LP then
-            local a=HB_ArrowCache[player]
-            if not a then
-                a=HB_Create("Frame",{Size=UDim2.new(0,28,0,28),BackgroundColor3=Color3.fromRGB(255,60,60),BorderSizePixel=0,AnchorPoint=Vector2.new(0.5,0.5),ZIndex=65,Visible=false},HB_ArrowHolder)
-                HB_Corner(a,14)
-                HB_Create("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="➤",Font=Enum.Font.GothamBold,TextSize=18,TextColor3=Color3.fromRGB(255,255,255),ZIndex=66},a)
-                HB_ArrowCache[player]=a
-            end
-            local char=player.Character
-            local hrp=char and char:FindFirstChild("HumanoidRootPart")
-            local hum=char and char:FindFirstChildOfClass("Humanoid")
-            local role=GetRole(player)
-            if char and hrp and hum and hum.Health>0 and role=="Murderer" then
-                local screen,onScreen=Camera:WorldToViewportPoint(hrp.Position)
-                local offScreen=not onScreen or screen.Z<=0 or screen.X<50 or screen.X>vpSize.X-50 or screen.Y<50 or screen.Y>vpSize.Y-50
-                if offScreen then
-                    local dir=hrp.Position-Camera.CFrame.Position
-                    local angle=math.atan2(dir.Z,dir.X)
-                    local ax=cx+math.cos(angle)*radius
-                    local ay=cy+math.sin(angle)*radius
-                    a.Visible=true
-                    a.Position=UDim2.new(0,ax,0,ay)
-                    a.Rotation=math.deg(angle)
-                else
-                    a.Visible=false
-                end
-            else
-                if a then
-                    a.Visible=false
-                end
-            end
-        end
-    end
-end)
-HB_MakeLine=function(parent)
-    return HB_Create("Frame",{BackgroundColor3=Color3.fromRGB(255,255,255),BorderSizePixel=0,AnchorPoint=Vector2.new(0.5,0.5),Visible=false,ZIndex=6},parent)
+    return true
 end
-HB_DrawLine=function(frame,p1,p2,color)
-    if not p1 or not p2 then
-        frame.Visible=false
-        return
-    end
-    local s1,on1=Camera:WorldToViewportPoint(p1)
-    local s2,on2=Camera:WorldToViewportPoint(p2)
-    if not on1 or not on2 or s1.Z<=0 or s2.Z<=0 then
-        frame.Visible=false
-        return
-    end
-    local dx=s2.X-s1.X
-    local dy=s2.Y-s1.Y
-    local len=math.sqrt(dx*dx+dy*dy)
-    local angle=math.deg(math.atan2(dy,dx))
-    frame.Visible=true
-    frame.Size=UDim2.new(0,len,0,2)
-    frame.Position=UDim2.new(0,s1.X+dx/2,0,s1.Y+dy/2)
-    frame.Rotation=angle
-    frame.BackgroundColor3=color
+function HB_AutoSaveClear()
+    _G[HB_AutoSave.saveKey]=nil
+    HB_AutoSave.savesCount=0
 end
-RS.RenderStepped:Connect(function()
-    if not S.ESPSkeleton then
-        for _,s in pairs(HB_SkelCache) do
-            for _,line in pairs(s) do
-                if line and line.Parent then
-                    line.Visible=false
-                end
-            end
-        end
-        return
-    end
-    for _,player in ipairs(Players:GetPlayers()) do
-        if player~=LP then
-            local char=player.Character
-            if char then
-                local head=char:FindFirstChild("Head")
-                local torso=char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-                local lowerTorso=char:FindFirstChild("LowerTorso")
-                local lArm=char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm")
-                local rArm=char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm")
-                local lLeg=char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg")
-                local rLeg=char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg")
-                local s=HB_SkelCache[player]
-                if not s then
-                    s={ht=HB_MakeLine(HB_SkeletonHolder),tl=HB_MakeLine(HB_SkeletonHolder),la=HB_MakeLine(HB_SkeletonHolder),ra=HB_MakeLine(HB_SkeletonHolder),ll=HB_MakeLine(HB_SkeletonHolder),rl=HB_MakeLine(HB_SkeletonHolder)}
-                    HB_SkelCache[player]=s
-                end
-                if head and torso and lArm and rArm and lLeg and rLeg then
-                    local role=GetRole(player)
-                    local color=ESP_COLORS[role] or ESP_COLORS.Innocent
-                    HB_DrawLine(s.ht,head.Position,torso.Position,color)
-                    if lowerTorso then
-                        HB_DrawLine(s.tl,torso.Position,lowerTorso.Position,color)
-                    else
-                        s.tl.Visible=false
-                    end
-                    HB_DrawLine(s.la,torso.Position,lArm.Position,color)
-                    HB_DrawLine(s.ra,torso.Position,rArm.Position,color)
-                    HB_DrawLine(s.ll,(lowerTorso and lowerTorso.Position or torso.Position),lLeg.Position,color)
-                    HB_DrawLine(s.rl,(lowerTorso and lowerTorso.Position or torso.Position),rLeg.Position,color)
-                end
-            end
-        end
-    end
-end)
-HB_MuzzleFlash=function(pos)
-    if not S.MuzzleFlash then
-        return
-    end
-    local myPos=Camera.CFrame.Position
-    if (pos-myPos).Magnitude>80 then
-        return
-    end
-    local screen,on=Camera:WorldToViewportPoint(pos)
-    if not on or screen.Z<=0 then
-        return
-    end
-    local flash=HB_Create("Frame",{Size=UDim2.new(0,40,0,40),Position=UDim2.new(0,screen.X-20,0,screen.Y-20),BackgroundColor3=Color3.fromRGB(255,220,100),BackgroundTransparency=0.3,BorderSizePixel=0,ZIndex=75},HB_MuzzleHolder)
-    HB_Corner(flash,20)
-    TweenService:Create(flash,TweenInfo.new(0.3),{Size=UDim2.new(0,80,0,80),Position=UDim2.new(0,screen.X-40,0,screen.Y-40),BackgroundTransparency=1}):Play()
-    task.delay(0.35,function()
-        if flash.Parent then
-            flash:Destroy()
-        end
-    end)
-end
-task.spawn(function()
-    while task.wait(0.4) do
-        if S.FootstepESP then
-            for _,p in ipairs(Players:GetPlayers()) do
-                if p~=LP then
-                    local char=p.Character
-                    local hrp=char and char:FindFirstChild("HumanoidRootPart")
-                    local hum=char and char:FindFirstChildOfClass("Humanoid")
-                    if hrp and hum and hum.Health>0 and hum.MoveDirection.Magnitude>0.1 then
-                        local role=GetRole(p)
-                        local color=ESP_COLORS[role] or ESP_COLORS.Innocent
-                        local screen,on=Camera:WorldToViewportPoint(hrp.Position)
-                        if on and screen.Z>0 then
-                            local ring=HB_Create("Frame",{Size=UDim2.new(0,20,0,20),Position=UDim2.new(0,screen.X-10,0,screen.Y-10),BackgroundTransparency=1,BorderSizePixel=0,ZIndex=45},HB_FootstepHolder)
-                            local st=HB_Create("UIStroke",{Color=color,Thickness=2,Transparency=0.3},ring)
-                            HB_Corner(ring,10)
-                            TweenService:Create(ring,TweenInfo.new(0.8),{Size=UDim2.new(0,60,0,60),Position=UDim2.new(0,screen.X-30,0,screen.Y-30)}):Play()
-                            TweenService:Create(st,TweenInfo.new(0.8),{Transparency=1}):Play()
-                            task.delay(0.9,function()
-                                if ring.Parent then
-                                    ring:Destroy()
-                                end
-                            end)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-HB_ChatBot={messages={"kkk","boa","ae","gg","?"},last=0,interval=45}
-task.spawn(function()
-    while task.wait(10) do
-        if S.ChatBot and tick()-HB_ChatBot.last>HB_ChatBot.interval then
-            if math.random()<0.5 then
-                HB_ChatBot.last=tick()
-            end
-        end
-    end
-end)
-LP.Chatted:Connect(function(msg)
-    if not S.AutoReplyAntiCheat then
-        return
-    end
-    local l=string.lower(msg)
-    if l:find("hack") or l:find("cheat") or l:find("trapa") or l:find("aim") then
-        local r=HB_ChatReplies[math.random(1,#HB_ChatReplies)]
-        task.wait(1.5+math.random())
-    end
-end)
-_prevSF=StartFlick
-StartFlick=function(target,tb)
-    if S.FlickPreview and target.hum and target.hum.Parent then
-        local fromScreen=Camera:WorldToViewportPoint(Camera.CFrame.Position)
-        local head=target.hum.Parent:FindFirstChild("Head")
-        if head then
-            local toScreen=Camera:WorldToViewportPoint(head.Position)
-            if toScreen then
-                HB_FlickPreviewShow(fromScreen,toScreen,Color3.fromRGB(255,200,100))
-            end
-        end
-    end
-    if S.WeaponProfiles then
-        local w=FindWeapon()
-        if w then
-            HB_WeaponProfileApply(w.Name)
-        end
-    end
-    _prevSF(target,tb)
-end
-_prevML2=MetaLearnUpdate
-MetaLearnUpdate=function(perf)
-    _prevML2(perf)
-    local hit=perf and perf>0.5
-    if hit then
-        if Flick and Flick.snapDur then
-            HB_PostFlickStats(Flick.snapDur,true)
-            HB_DNAUpdate(Flick.snapDur,0,30,true)
-        end
-        local target=Flick and Flick.targetPlayer
-        if target and Cache.HRPs[target] then
-            HB_HeatmapAdd(Cache.HRPs[target].Position)
-            HB_PredictableTrack(target.Name,true)
-            HB_LivingMapRecord(Cache.HRPs[target].Position,"kill")
-        end
-    else
-        local target=Flick and Flick.targetPlayer
-        if target then
-            HB_PredictableTrack(target.Name,false)
-            HB_LogMissReason("Flick failed",target.Name)
-        end
-    end
-    HB_ABTestRecord(hit)
-    if Flick and Flick.snapDur then
-        HB_PredMarketResolve(Flick.snapDur,hit)
-    end
-end
-HB_DebugRoles=function()
-    for _,p in ipairs(Players:GetPlayers()) do
-        if p~=LP then
-            print(string.format("%s → %s | Tool: %s",p.Name,GetRole(p),HB_FindTool(p) or "nenhuma"))
-        end
-    end
-end
-HB_ShowAllRoles=HB_DebugRoles
-task.spawn(function()
-    local lastHealth=100
-    while task.wait(0.2) do
-        local hum=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if hum then
-            if hum.Health<lastHealth and hum.Health<=0 then
-                pcall(HB_DeathRecapStart)
-                S.Deaths=S.Deaths+1
-                S.Streak=0
-            end
-            lastHealth=hum.Health
-        end
-    end
-end)
-UIS.InputBegan:Connect(function(input,gp)
-    if gp then
-        return
-    end
-    if input.KeyCode==Enum.KeyCode.F2 then
-        pcall(HB_LegacySessionSave)
-    end
-end)
-print("═══════════════════════════════════════════")
-print("✅ HELLBORN ULTIMATE v9.0 — COMPLETO!")
-print("═══════════════════════════════════════════")
-print("📊 46 features · 18 abas")
-print("🎯 ESP: 🔴 Murderer | 🔵 Sheriff | 🟢 Innocent")
-print("⌨️  Insert = menu | Q = Flick | F1 = Panic | F2 = Legacy")
-print("💡 HBShowAllRoles() pra debug")
-print("═══════════════════════════════════════════")
-
-HB_RSI={
-    enabled=true,
-    generation=1,
-    population={},
-    popSize=20,
-    bestGenome=nil,
-    bestFitness=0,
-    mutations=0,
-    crossovers=0,
-    reverts=0,
-    killsSinceEvolve=0,
-    evolveEveryKills=5,
-    fitnessSamples={},
-    generationHistory={},
-    lastApplyTick=0,
-    applyInterval=1.0,
-    maxHistory=50,
-}
-
+HB_RSI={enabled=true,generation=1,population={},popSize=20,bestGenome=nil,bestFitness=0,mutations=0,crossovers=0,reverts=0,killsSinceEvolve=0,evolveEveryKills=5,generationHistory={},lastApplyTick=0,applyInterval=1.0,maxHistory=50}
 function HB_RSI_NewGenome()
-    return {
-        snap=0.030+math.random()*0.040,
-        hold=0.100+math.random()*0.150,
-        verify=0.300+math.random()*0.400,
-        noise=0.00+math.random()*0.30,
-        aggression=0.3+math.random()*0.7,
-        fitness=0.5,
-        wins=0,
-        losses=0,
-        bornAt=tick(),
-    }
+    return {snap=0.030+math.random()*0.040,hold=0.100+math.random()*0.150,verify=0.300+math.random()*0.400,noise=0.00+math.random()*0.30,aggression=0.3+math.random()*0.7,fitness=0.5,wins=0,losses=0,bornAt=tick()}
 end
-
 function HB_RSI_Init()
     HB_RSI.population={}
     for i=1,HB_RSI.popSize do
@@ -4254,55 +2852,22 @@ function HB_RSI_Init()
     HB_RSI.bestFitness=0.5
 end
 HB_RSI_Init()
-
 function HB_RSI_Mutate(genome,rate)
     rate=rate or 0.15
-    local g={
-        snap=genome.snap,
-        hold=genome.hold,
-        verify=genome.verify,
-        noise=genome.noise,
-        aggression=genome.aggression,
-        fitness=0.5,
-        wins=0,
-        losses=0,
-        bornAt=tick(),
-    }
-    if math.random()<rate then
-        g.snap=math.clamp(g.snap+(math.random()-0.5)*0.015,0.015,0.150)
-    end
-    if math.random()<rate then
-        g.hold=math.clamp(g.hold+(math.random()-0.5)*0.060,0.050,0.400)
-    end
-    if math.random()<rate then
-        g.verify=math.clamp(g.verify+(math.random()-0.5)*0.150,0.200,1.000)
-    end
-    if math.random()<rate then
-        g.noise=math.clamp(g.noise+(math.random()-0.5)*0.100,0.000,0.500)
-    end
-    if math.random()<rate then
-        g.aggression=math.clamp(g.aggression+(math.random()-0.5)*0.200,0.100,1.000)
-    end
+    local g={snap=genome.snap,hold=genome.hold,verify=genome.verify,noise=genome.noise,aggression=genome.aggression,fitness=0.5,wins=0,losses=0,bornAt=tick()}
+    if math.random()<rate then g.snap=math.clamp(g.snap+(math.random()-0.5)*0.015,0.015,0.150) end
+    if math.random()<rate then g.hold=math.clamp(g.hold+(math.random()-0.5)*0.060,0.050,0.400) end
+    if math.random()<rate then g.verify=math.clamp(g.verify+(math.random()-0.5)*0.150,0.200,1.000) end
+    if math.random()<rate then g.noise=math.clamp(g.noise+(math.random()-0.5)*0.100,0.000,0.500) end
+    if math.random()<rate then g.aggression=math.clamp(g.aggression+(math.random()-0.5)*0.200,0.100,1.000) end
     HB_RSI.mutations=HB_RSI.mutations+1
     return g
 end
-
 function HB_RSI_Crossover(a,b)
-    local g={
-        snap=math.random()<0.5 and a.snap or b.snap,
-        hold=math.random()<0.5 and a.hold or b.hold,
-        verify=math.random()<0.5 and a.verify or b.verify,
-        noise=math.random()<0.5 and a.noise or b.noise,
-        aggression=math.random()<0.5 and a.aggression or b.aggression,
-        fitness=0.5,
-        wins=0,
-        losses=0,
-        bornAt=tick(),
-    }
+    local g={snap=math.random()<0.5 and a.snap or b.snap,hold=math.random()<0.5 and a.hold or b.hold,verify=math.random()<0.5 and a.verify or b.verify,noise=math.random()<0.5 and a.noise or b.noise,aggression=math.random()<0.5 and a.aggression or b.aggression,fitness=0.5,wins=0,losses=0,bornAt=tick()}
     HB_RSI.crossovers=HB_RSI.crossovers+1
     return g
 end
-
 function HB_RSI_Fitness(genome)
     local total=genome.wins+genome.losses
     if total==0 then
@@ -4310,11 +2875,8 @@ function HB_RSI_Fitness(genome)
     end
     return genome.wins/total
 end
-
 function HB_RSI_Evolve()
-    table.sort(HB_RSI.population,function(a,b)
-        return HB_RSI_Fitness(a)>HB_RSI_Fitness(b)
-    end)
+    table.sort(HB_RSI.population,function(a,b) return HB_RSI_Fitness(a)>HB_RSI_Fitness(b) end)
     local elite=math.floor(HB_RSI.popSize*0.2)
     local newPop={}
     for i=1,elite do
@@ -4335,19 +2897,12 @@ function HB_RSI_Evolve()
         HB_RSI.reverts=HB_RSI.reverts+1
     end
     HB_RSI.generation=HB_RSI.generation+1
-    table.insert(HB_RSI.generationHistory,{
-        gen=HB_RSI.generation,
-        fitness=HB_RSI.bestFitness,
-        snap=HB_RSI.bestGenome.snap,
-        hold=HB_RSI.bestGenome.hold,
-        t=tick(),
-    })
+    table.insert(HB_RSI.generationHistory,{gen=HB_RSI.generation,fitness=HB_RSI.bestFitness,snap=HB_RSI.bestGenome.snap,hold=HB_RSI.bestGenome.hold,t=tick()})
     if #HB_RSI.generationHistory>HB_RSI.maxHistory then
         table.remove(HB_RSI.generationHistory,1)
     end
-    HB_Toast(string.format("🧬 Gen %d | Fit %.0f%%",HB_RSI.generation,HB_RSI.bestFitness*100),"success")
+    print(string.format("[RSI] Gen %d | Fit %.0f%%",HB_RSI.generation,HB_RSI.bestFitness*100))
 end
-
 function HB_RSI_Apply()
     if not HB_RSI.enabled then
         return
@@ -4363,15 +2918,7 @@ function HB_RSI_Apply()
     Flick.snapDur=Flick.snapDur*0.85+g.snap*0.15
     Flick.holdDur=Flick.holdDur*0.85+g.hold*0.15
     Flick.verifyWait=Flick.verifyWait*0.85+g.verify*0.15
-    if S.AimNoiseAmp then
-        S.AimNoiseAmp=S.AimNoiseAmp*0.85+g.noise*0.15
-    end
-    if S.AlignTol then
-        local tol=2+g.aggression*8
-        S.AlignTol=S.AlignTol*0.85+tol*0.15
-    end
 end
-
 function HB_RSI_RecordKill()
     if not HB_RSI.enabled then
         return
@@ -4387,7 +2934,6 @@ function HB_RSI_RecordKill()
         pcall(HB_RSI_Evolve)
     end
 end
-
 function HB_RSI_RecordMiss()
     if not HB_RSI.enabled then
         return
@@ -4398,161 +2944,13 @@ function HB_RSI_RecordMiss()
         g.fitness=HB_RSI_Fitness(g)
     end
 end
-
-HB_RSI_Gui=HB_Create("ScreenGui",{Name="HB_RSI_Overlay",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=91},PG)
-HB_RSI_Frame=HB_Create("Frame",{Name="RSI",Size=UDim2.new(0,240,0,140),Position=UDim2.new(0,10,0,300),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.15,BorderSizePixel=0,Visible=false,ZIndex=70},HB_RSI_Gui)
-HB_Corner(HB_RSI_Frame,10)
-HB_Stroke(HB_RSI_Frame,Color3.fromRGB(150,100,255),2,0.3)
-HB_Create("TextLabel",{Size=UDim2.new(1,0,0,22),Position=UDim2.new(0,0,0,4),BackgroundTransparency=1,Text="🧬 RECURSIVE SELF-IMPROVEMENT",Font=Enum.Font.GothamBold,TextSize=11,TextColor3=Color3.fromRGB(200,180,255),TextXAlignment=Enum.TextXAlignment.Center,ZIndex=71},HB_RSI_Frame)
-HB_RSI_Info=HB_Create("TextLabel",{Size=UDim2.new(1,-16,1,-30),Position=UDim2.new(0,8,0,26),BackgroundTransparency=1,Text="",Font=Enum.Font.Code,TextSize=10,TextColor3=Color3.fromRGB(245,245,250),TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,TextWrapped=true,ZIndex=71},HB_RSI_Frame)
-
-task.spawn(function()
-    while task.wait(0.5) do
-        if HB_RSI.enabled and HB_RSI_Frame.Visible then
-            local g=HB_RSI.bestGenome
-            if g then
-                local total=g.wins+g.losses
-                HB_RSI_Info.Text=string.format(
-                    "Gen: %d | Mut: %d | Cross: %d\nFit: %.0f%% (%d/%d)\nSnap: %.3f  Hold: %.3f\nVerify: %.3f  Noise: %.2f\nAggro: %.2f  Reverts: %d",
-                    HB_RSI.generation,
-                    HB_RSI.mutations,
-                    HB_RSI.crossovers,
-                    HB_RSI_Fitness(g)*100,
-                    g.wins,
-                    total,
-                    g.snap,
-                    g.hold,
-                    g.verify,
-                    g.noise,
-                    g.aggression,
-                    HB_RSI.reverts
-                )
-            end
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(1) do
-        if HB_RSI.enabled then
-            pcall(HB_RSI_Apply)
-        end
-    end
-end)
-
-RS.RenderStepped:Connect(function()
-    if HB_RSI_Frame then
-        HB_RSI_Frame.Visible=S.RSIOverlay==true
-    end
-end)
-
-HB_RSI_OrigML=MetaLearnUpdate
-MetaLearnUpdate=function(perf)
-    HB_RSI_OrigML(perf)
-    if not HB_RSI.enabled then
-        return
-    end
-    if perf and perf>0.5 then
-        pcall(HB_RSI_RecordKill)
-    else
-        pcall(HB_RSI_RecordMiss)
-    end
-end
-
-function HB_RSI_ForceEvolve()
-    HB_RSI.killsSinceEvolve=0
-    HB_RSI_Evolve()
-    HB_Toast("🧬 Evolução forçada — Gen "..HB_RSI.generation,"success")
-end
-
-function HB_RSI_ShowHistory()
-    print("═══ RSI HISTORY ═══")
-    for _,h in ipairs(HB_RSI.generationHistory) do
-        print(string.format("Gen %d | Fit %.0f%% | snap %.3f | hold %.3f",h.gen,h.fitness*100,h.snap,h.hold))
-    end
-    print("════════════════════")
-end
-
-function HB_RSI_Reset()
-    HB_RSI_Init()
-    HB_RSI.generation=1
-    HB_RSI.mutations=0
-    HB_RSI.crossovers=0
-    HB_RSI.reverts=0
-    HB_RSI.generationHistory={}
-    HB_Toast("🧬 RSI resetado","info")
-end
-
-S.RSIOverlay=S.RSIOverlay or false
-S.RSIEnabled=S.RSIEnabled or true
-
-HB_RSI_TabHook=function()
-    local tab=_G.UI and _G.UI.TabContents and _G.UI.TabContents["Revolu"]
-    if not tab or not _G.Cmp then
-        return
-    end
-    local y=0
-    for _,c in ipairs(tab:GetChildren()) do
-        if c:IsA("Frame") then
-            y=math.max(y,c.Position.Y.Offset+c.Size.Y.Offset+8)
-        end
-    end
-    y=_G.Cmp.Section(tab,"🧬 RECURSIVE SELF-IMPROVEMENT",y)
-    y=_G.Cmp.Toggle(tab,{text="RSI Enable",desc="Auto-melhora por kill",default=true,callback=function(v)
-        S.RSIEnabled=v
-        HB_RSI.enabled=v
-    end},y)
-    y=_G.Cmp.Toggle(tab,{text="RSI Overlay",desc="Mostra painel Gen/Fitness",default=false,callback=function(v)
-        S.RSIOverlay=v
-    end},y)
-    y=_G.Cmp.Button(tab,{text="🧬 Forçar Evolução",callback=function()
-        HB_RSI_ForceEvolve()
-    end},y)
-    y=_G.Cmp.Button(tab,{text="📊 Ver Histórico",callback=function()
-        HB_RSI_ShowHistory()
-    end},y)
-    y=_G.Cmp.Button(tab,{text="🔄 Resetar RSI",danger=true,callback=function()
-        HB_RSI_Reset()
-    end},y)
-end
-
-task.delay(1,function()
-    pcall(HB_RSI_TabHook)
-end)
-
-HB_RSI.enabled=S.RSIEnabled
-
-HB_RageMeter={
-    enabled=true,
-    active=false,
-    activatedAt=0,
-    roundStartTick=0,
-    lastRoundCheck=0,
-    rageKills=0,
-    rageDeaths=0,
-    myDeathThisRound=false,
-    boostSnap=0.5,
-    boostHold=0.5,
-    boostVerify=0.5,
-    originalValues={},
-}
-
+HB_RageMeter={enabled=true,active=false,activatedAt=0,roundStartTick=0,lastRoundCheck=0,rageKills=0,rageDeaths=0,myDeathThisRound=false,boostSnap=0.5,boostHold=0.5,boostVerify=0.5,originalValues={}}
 function HB_RageMeter_SaveOriginals()
     if not Flick then
         return
     end
-    HB_RageMeter.originalValues={
-        snapDur=Flick.snapDur,
-        holdDur=Flick.holdDur,
-        verifyWait=Flick.verifyWait,
-        alignTol=S.AlignTol,
-        retries=S.Retries,
-        rateLimit=S.RateLimit,
-        fakeMiss=S.FakeMiss,
-        antiFlick=S.AntiFlickBlock,
-    }
+    HB_RageMeter.originalValues={snapDur=Flick.snapDur,holdDur=Flick.holdDur,verifyWait=Flick.verifyWait,alignTol=S.AlignTol,retries=S.Retries,rateLimit=S.RateLimit,fakeMiss=S.FakeMiss,antiFlick=S.AntiFlickBlock}
 end
-
 function HB_RageMeter_Activate()
     if not HB_RageMeter.enabled or HB_RageMeter.active then
         return
@@ -4574,9 +2972,8 @@ function HB_RageMeter_Activate()
     S.RateLimit=false
     S.FakeMiss=false
     S.AntiFlickBlock=false
-    HB_Toast("💀 RAGE MODE ATIVO — PARTIDA TODA","danger")
+    print("[RAGE] ATIVO — partida toda")
 end
-
 function HB_RageMeter_Deactivate(reason)
     if not HB_RageMeter.active then
         return
@@ -4584,15 +2981,9 @@ function HB_RageMeter_Deactivate(reason)
     HB_RageMeter.active=false
     local o=HB_RageMeter.originalValues
     if Flick then
-        if o.snapDur then
-            Flick.snapDur=o.snapDur
-        end
-        if o.holdDur then
-            Flick.holdDur=o.holdDur
-        end
-        if o.verifyWait then
-            Flick.verifyWait=o.verifyWait
-        end
+        if o.snapDur then Flick.snapDur=o.snapDur end
+        if o.holdDur then Flick.holdDur=o.holdDur end
+        if o.verifyWait then Flick.verifyWait=o.verifyWait end
     end
     if o.alignTol then
         S.AlignTol=o.alignTol
@@ -4601,15 +2992,8 @@ function HB_RageMeter_Deactivate(reason)
         S.FakeMiss=o.fakeMiss
         S.AntiFlickBlock=o.antiFlick
     end
-    if reason=="death" then
-        HB_Toast(string.format("💀 RAGE OFF — Morreu · %dK/%dD",HB_RageMeter.rageKills,HB_RageMeter.rageDeaths),"warning")
-    elseif reason=="round_end" then
-        HB_Toast(string.format("💀 RAGE OFF — Fim do round · %dK/%dD",HB_RageMeter.rageKills,HB_RageMeter.rageDeaths),"warning")
-    elseif reason=="manual" then
-        HB_Toast("💀 RAGE OFF — Manual","info")
-    end
+    print(string.format("[RAGE] OFF (%s) — %dK/%dD",reason or "?",HB_RageMeter.rageKills,HB_RageMeter.rageDeaths))
 end
-
 function HB_RageMeter_IsAlive()
     local myChar=LP.Character
     if not myChar then
@@ -4621,7 +3005,6 @@ function HB_RageMeter_IsAlive()
     end
     return true
 end
-
 function HB_RageMeter_DetectRoundStart()
     local now=tick()
     if now-HB_RageMeter.lastRoundCheck<1 then
@@ -4634,14 +3017,14 @@ function HB_RageMeter_DetectRoundStart()
     local aliveCount=0
     local murdererCount=0
     local totalPlayers=0
-    for _,p in ipairs(Cache.List) do
+    for _,p2 in ipairs(Cache.List) do
         totalPlayers=totalPlayers+1
-        local ch=Cache.Chars[p]
+        local ch=Cache.Chars[p2]
         if ch then
             local hum=ch:FindFirstChildOfClass("Humanoid")
             if hum and hum.Health>0 then
                 aliveCount=aliveCount+1
-                if GetRole(p)=="Murderer" then
+                if GetRole(p2)=="Murderer" then
                     murdererCount=murdererCount+1
                 end
             end
@@ -4655,7 +3038,6 @@ function HB_RageMeter_DetectRoundStart()
     end
     return false
 end
-
 function HB_RageMeter_DetectRoundEnd()
     if not HB_RageMeter.active then
         return false
@@ -4669,9 +3051,9 @@ function HB_RageMeter_DetectRoundEnd()
         return false
     end
     local aliveMurderers=0
-    for _,p in ipairs(Cache.List) do
-        if p~=LP and GetRole(p)=="Murderer" then
-            local ch=Cache.Chars[p]
+    for _,p2 in ipairs(Cache.List) do
+        if p2~=LP and GetRole(p2)=="Murderer" then
+            local ch=Cache.Chars[p2]
             if ch then
                 local hum=ch:FindFirstChildOfClass("Humanoid")
                 if hum and hum.Health>0 then
@@ -4683,11 +3065,11 @@ function HB_RageMeter_DetectRoundEnd()
     local myRole=GetRole(LP)
     if myRole=="Murderer" then
         local aliveInnocents=0
-        for _,p in ipairs(Cache.List) do
-            if p~=LP then
-                local role=GetRole(p)
+        for _,p2 in ipairs(Cache.List) do
+            if p2~=LP then
+                local role=GetRole(p2)
                 if role=="Innocent" or role=="Sheriff" then
-                    local ch=Cache.Chars[p]
+                    local ch=Cache.Chars[p2]
                     if ch then
                         local hum=ch:FindFirstChildOfClass("Humanoid")
                         if hum and hum.Health>0 then
@@ -4707,220 +3089,29 @@ function HB_RageMeter_DetectRoundEnd()
     end
     return false
 end
-
 task.spawn(function()
     while task.wait(0.5) do
         if HB_RageMeter.enabled then
             if not HB_RageMeter.active then
-                local roundStart=HB_RageMeter_DetectRoundStart()
-                if roundStart then
+                if HB_RageMeter_DetectRoundStart() then
                     task.wait(math.random(1,3))
                     pcall(HB_RageMeter_Activate)
                 end
             else
-                local endReason=HB_RageMeter_DetectRoundEnd()
-                if endReason then
-                    pcall(HB_RageMeter_Deactivate,endReason)
+                local r=HB_RageMeter_DetectRoundEnd()
+                if r then
+                    pcall(HB_RageMeter_Deactivate,r)
                 end
             end
         end
     end
 end)
-
-HB_RageMeter_OrigML=MetaLearnUpdate
-MetaLearnUpdate=function(perf)
-    HB_RageMeter_OrigML(perf)
-    if HB_RageMeter.active then
-        if perf and perf>0.5 then
-            HB_RageMeter.rageKills=HB_RageMeter.rageKills+1
-            if Flick then
-                Flick.snapDur=math.max(0.005,Flick.snapDur*0.92)
-            end
-        end
-    end
-end
-
-HB_RageGui=HB_Create("ScreenGui",{Name="HB_RageMeter",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=92},PG)
-HB_RageFrame=HB_Create("Frame",{Name="RageMeter",Size=UDim2.new(0,300,0,70),Position=UDim2.new(0.5,-150,0,80),BackgroundColor3=Color3.fromRGB(40,0,0),BackgroundTransparency=0.2,BorderSizePixel=0,Visible=false,ZIndex=80},HB_RageGui)
-HB_Corner(HB_RageFrame,10)
-HB_RageStroke=HB_Create("UIStroke",{Color=Color3.fromRGB(255,0,0),Thickness=3,Transparency=0},HB_RageFrame)
-HB_Create("TextLabel",{Size=UDim2.new(1,0,0,26),Position=UDim2.new(0,0,0,4),BackgroundTransparency=1,Text="💀 RAGE MODE — PARTIDA TODA 💀",Font=Enum.Font.GothamBlack,TextSize=15,TextColor3=Color3.fromRGB(255,100,100),TextXAlignment=Enum.TextXAlignment.Center,ZIndex=81},HB_RageFrame)
-HB_RageTimer=HB_Create("TextLabel",{Size=UDim2.new(0.5,0,0,20),Position=UDim2.new(0,10,0,32),BackgroundTransparency=1,Text="00:00",Font=Enum.Font.Code,TextSize=14,TextColor3=Color3.fromRGB(255,255,255),TextXAlignment=Enum.TextXAlignment.Left,ZIndex=81},HB_RageFrame)
-HB_RageStats=HB_Create("TextLabel",{Size=UDim2.new(0.5,0,0,20),Position=UDim2.new(0.5,0,0,32),BackgroundTransparency=1,Text="0K / 0D",Font=Enum.Font.Code,TextSize=14,TextColor3=Color3.fromRGB(255,180,180),TextXAlignment=Enum.TextXAlignment.Right,ZIndex=81},HB_RageFrame)
-HB_Create("TextLabel",{Size=UDim2.new(1,0,0,14),Position=UDim2.new(0,0,0,52),BackgroundTransparency=1,Text="Ativo até morrer ou fim do round",Font=Enum.Font.Gotham,TextSize=10,TextColor3=Color3.fromRGB(200,120,120),TextXAlignment=Enum.TextXAlignment.Center,ZIndex=81},HB_RageFrame)
-
-task.spawn(function()
-    while task.wait(0.1) do
-        if HB_RageMeter.active then
-            HB_RageFrame.Visible=true
-            local elapsed=tick()-HB_RageMeter.activatedAt
-            local mins=math.floor(elapsed/60)
-            local secs=math.floor(elapsed%60)
-            HB_RageTimer.Text=string.format("%02d:%02d",mins,secs)
-            HB_RageStats.Text=string.format("%dK / %dD",HB_RageMeter.rageKills,HB_RageMeter.rageDeaths)
-            local pulse=math.sin(tick()*6)*0.5+0.5
-            HB_RageStroke.Transparency=0.1+pulse*0.4
-            HB_RageStroke.Thickness=2+pulse*2
-        else
-            HB_RageFrame.Visible=false
-        end
-    end
-end)
-
-function HB_RageMeter_ForceActivate()
-    HB_RageMeter.roundStartTick=0
-    HB_RageMeter_Activate()
-end
-
-HB_Presets=HB_Presets or {}
-
-HB_Presets.TRYHARD={
-    AutoFlick=true,
-    AlignTol=1,
-    Retries=20,
-    AimSmooth=0.02,
-    FlickMode="Rage",
-    TrigOn=false,
-    TrigRad=250,
-    TrigCD=0.05,
-    RateLimit=false,
-    FakeMiss=false,
-    Humanize=false,
-    AntiFlickBlock=false,
-    RandomAim=false,
-    MouseSim=false,
-    MicroDev=false,
-    ReactDelay=false,
-    Backoff=false,
-    FakeIn=false,
-    ESP=true,
-    ESPName=true,
-    ESP_LOD=false,
-    Chams=true,
-    ESPArrows=true,
-    ESPSkeleton=true,
-    Radar=true,
-    TimelinePredictor=true,
-    Hitmark=true,
-    KillFeed=true,
-    Cross=true,
-    CrossSize=14,
-    FPSAdaptive=true,
-    FPSAdaptiveMinFPS=30,
-    HitscanOpt=true,
-    WeaponCooldownCheck=false,
-    PostKillDelay=false,
-    PostKillDelayMs=0,
-    PreAim=true,
-    StickyAim=true,
-    StickyAimStrength=0.6,
-    ProgressiveFlick=true,
-    SmartTarget=true,
-    AIM_On=true,
-    AIOn=true,
-    NNReal=true,
-    NNRate=0.05,
-    HumanCameraSettle=false,
-    IdlePattern=false,
-    PassiveAntiReport=false,
-    MuzzleFlash=true,
-    FootstepESP=true,
-    RSIEnabled=true,
-    RSIOverlay=true,
-    ThreatLivePanel=true,
-    PriorityQueue=true,
-    PredictableFlag=true,
-    PostFlickStats=true,
-    ConfidenceBar=true,
-    AdaptiveSnap=true,
-    PersonalityProfiles=true,
-    WeaponLearning=true,
-    DNASystem=true,
-    LivingMap=true,
-    ABTesting=true,
-    EmotionalAI=true,
-    AntiMetaAdapt=true,
-    DeathRecap3D=true,
-}
-
-HB_Presets.RAGE_MAX={
-    AutoFlick=true,
-    AlignTol=0.5,
-    Retries=99,
-    AimSmooth=0.0,
-    FlickMode="Rage",
-    TrigOn=false,
-    TrigRad=999,
-    TrigCD=0.0,
-    RateLimit=false,
-    FakeMiss=false,
-    Humanize=false,
-    AntiFlickBlock=false,
-    RandomAim=false,
-    MouseSim=false,
-    MicroDev=false,
-    ReactDelay=false,
-    Backoff=false,
-    FakeIn=false,
-    ESP=true,
-    ESPName=true,
-    ESP_LOD=false,
-    ESPThick=3,
-    Chams=true,
-    ESPArrows=true,
-    ESPSkeleton=true,
-    Radar=true,
-    TimelinePredictor=true,
-    Hitmark=true,
-    KillFeed=true,
-    Cross=true,
-    CrossSize=20,
-    FPSAdaptive=true,
-    FPSAdaptiveMinFPS=15,
-    HitscanOpt=true,
-    WeaponCooldownCheck=false,
-    PostKillDelay=false,
-    PostKillDelayMs=0,
-    PreAim=true,
-    StickyAim=true,
-    StickyAimStrength=1.0,
-    ProgressiveFlick=true,
-    SmartTarget=true,
-    AimHumanization=false,
-    AIM_On=true,
-    AIOn=true,
-    NNReal=true,
-    NNRate=0.20,
-    HumanCameraSettle=false,
-    IdlePattern=false,
-    PassiveAntiReport=false,
-    MuzzleFlash=true,
-    FootstepESP=true,
-    RSIEnabled=true,
-    RSIOverlay=false,
-    ThreatLivePanel=false,
-    PriorityQueue=true,
-    PredictableFlag=true,
-    PostFlickStats=false,
-    ConfidenceBar=false,
-    AdaptiveSnap=true,
-    PersonalityProfiles=false,
-    WeaponLearning=false,
-    DNASystem=true,
-    LivingMap=true,
-    ABTesting=false,
-    EmotionalAI=false,
-    AntiMetaAdapt=false,
-    DeathRecap3D=false,
-    HysteresisMs=0,
-    AntiFlickBackoff=0,
-    FPSAdaptiveMinFPS=15,
-}
-
+HB_Presets={}
+HB_Presets.TRYHARD={AutoFlick=true,AlignTol=1,Retries=20,AimSmooth=0.02,FlickMode="Rage",TrigOn=false,TrigRad=250,RateLimit=false,FakeMiss=false,Humanize=false,AntiFlickBlock=false,RandomAim=false,ESP=true,Chams=true,ESPArrows=true,ESPSkeleton=true,Radar=true,TimelinePredictor=true,Hitmark=true,KillFeed=true,Cross=true,FPSAdaptive=true,HitscanOpt=true,WeaponCooldownCheck=false,PostKillDelay=false,PreAim=true,StickyAim=true,StickyAimStrength=0.6,ProgressiveFlick=true,SmartTarget=true,NNReal=true,NNRate=0.05,RSIEnabled=true}
+HB_Presets.RAGE_MAX={AutoFlick=true,AlignTol=0.5,Retries=99,AimSmooth=0.0,FlickMode="Rage",TrigOn=false,TrigRad=999,RateLimit=false,FakeMiss=false,Humanize=false,AntiFlickBlock=false,RandomAim=false,ESP=true,ESPThick=3,Chams=true,ESPArrows=true,ESPSkeleton=true,Radar=true,TimelinePredictor=true,Hitmark=true,KillFeed=true,Cross=true,CrossSize=20,FPSAdaptive=true,FPSAdaptiveMinFPS=15,HitscanOpt=true,WeaponCooldownCheck=false,PostKillDelay=false,PreAim=true,StickyAim=true,StickyAimStrength=1.0,ProgressiveFlick=true,SmartTarget=true,AimHumanization=false,NNReal=true,NNRate=0.20,RSIEnabled=true,HysteresisMs=0,AntiFlickBackoff=0}
 function HB_ApplyPreset(name)
     local preset=HB_Presets[name]
     if not preset then
-        HB_Toast("Preset desconhecido: "..tostring(name),"danger")
         return
     end
     for k,v in pairs(preset) do
@@ -4947,114 +3138,9 @@ function HB_ApplyPreset(name)
         S.REV_HUMAN.fatigue=false
         S.REV_HUMAN.cognitive=false
         S.REV_HUMAN.emotion=false
-        S.REV_HUMAN.altDetect=false
-        S.REV_HUMAN.squad=false
-        S.REV_HUMAN.reputation=false
         if name=="RAGE_MAX" then
             S.REV_HUMAN.persona="aggressive"
             S.REV_HUMAN.personaStrength=1.0
-        else
-            S.REV_HUMAN.persona="calculista"
-            S.REV_HUMAN.personaStrength=0.7
-        end
-    end
-    if S.REV_PHYS then
-        S.REV_PHYS.ballistic=true
-        S.REV_PHYS.rayTrace=true
-        S.REV_PHYS.ik=true
-        S.REV_PHYS.animMirror=true
-        S.REV_PHYS.gameStateRecon=true
-        S.REV_PHYS.serverMirror=true
-        S.REV_PHYS.latency2=true
-        S.REV_PHYS.jitterBuf=true
-    end
-    if S.REV_SOCIAL then
-        S.REV_SOCIAL.antiAttr=false
-        S.REV_SOCIAL.misdirect=false
-        S.REV_SOCIAL.bait=false
-        S.REV_SOCIAL.antiReport=false
-        S.REV_SOCIAL.skillCurve=false
-        S.REV_SOCIAL.mimicry=false
-        S.REV_SOCIAL.p2p=false
-        S.REV_SOCIAL.zkProof=false
-    end
-    if S.REV_STEALTH then
-        S.REV_STEALTH.advExamples=true
-        S.REV_STEALTH.jitterDist=false
-        S.REV_STEALTH.antiAntiCheat=false
-        S.REV_STEALTH.adaptiveRate=false
-        S.REV_STEALTH.plausible=false
-        S.REV_STEALTH.steganog=false
-        S.REV_STEALTH.obfuscate=false
-    end
-    if S.REV_AI then
-        S.REV_AI.meta=true
-        S.REV_AI.nas=true
-        S.REV_AI.cloning=true
-        S.REV_AI.selfPlay=true
-        S.REV_AI.worldModel=true
-        S.REV_AI.activeInf=true
-        S.REV_AI.transformer=true
-        S.REV_AI.moe=true
-        S.REV_AI.uncert=(name~="RAGE_MAX")
-        S.REV_AI.causal=true
-        S.REV_AI.counterfact=true
-        S.REV_AI.adversarial=true
-        S.REV_AI.transfer=true
-        S.REV_AI.federated=true
-        S.REV_AI.lifelong=true
-        if name=="RAGE_MAX" then
-            S.REV_AI.uncertThreshold=0.05
-            S.REV_AI.metaLR=0.05
-            S.REV_AI.selfPlayEpochs=500
-        end
-    end
-    if S.REV_MAD then
-        S.REV_MAD.neuroSym=true
-        S.REV_MAD.quantum=true
-        S.REV_MAD.evolutionary=true
-        S.REV_MAD.swarm=true
-        S.REV_MAD.genetic=true
-        S.REV_MAD.antColony=true
-        S.REV_MAD.digitalTwin=true
-        S.REV_MAD.sleepWake=true
-        S.REV_MAD.curriculum=true
-        S.REV_MAD.dreamState=true
-        S.REV_MAD.recursive=true
-        if name=="RAGE_MAX" then
-            S.REV_MAD.quantumTemp=500
-            S.REV_MAD.evoPop=100
-            S.REV_MAD.evoGens=200
-            S.REV_MAD.swarmN=20
-            S.REV_MAD.antN=50
-            S.REV_MAD.recursiveInterval=100
-        end
-    end
-    if S.REV_ARCH then
-        S.REV_ARCH.rollback=true
-        S.REV_ARCH.diffSync=true
-        S.REV_ARCH.aotCompile=true
-        S.REV_ARCH.hotSwap=true
-    end
-    if S.REV_FEAT then
-        S.REV_FEAT.whatIf=true
-        S.REV_FEAT.forecast=true
-        S.REV_FEAT.director=(name~="RAGE_MAX")
-        S.REV_FEAT.wager=true
-        S.REV_FEAT.blockchain=false
-        if name=="RAGE_MAX" then
-            S.REV_FEAT.whatIfIter=10000
-        end
-    end
-    if S.REV_GAME then
-        S.REV_GAME.multiRound=true
-        S.REV_GAME.metaGame=true
-        S.REV_GAME.roleRot=true
-        S.REV_GAME.legendary=true
-        S.REV_GAME.adaptDiff=true
-        if name=="RAGE_MAX" then
-            S.REV_GAME.legendaryThreshold=3
-            S.REV_GAME.multiRoundDepth=10
         end
     end
     if HB_RSI then
@@ -5077,21 +3163,14 @@ function HB_ApplyPreset(name)
             HB_RageMeter.boostVerify=0.30
         end
     end
-    if name=="RAGE_MAX" then
-        HB_Toast("💀💀💀 RAGE MAX — SUPER COMBO ATIVADO","danger")
-    else
-        HB_Toast("⚡ TRYHARD ATIVADO","success")
-    end
+    print("[HB] Preset: "..name)
 end
-
 function HB_PresetTryhard()
     HB_ApplyPreset("TRYHARD")
 end
-
 function HB_PresetRageMax()
     HB_ApplyPreset("RAGE_MAX")
 end
-
 function HB_PresetReset()
     if Flick then
         Flick.snapDur=0.045
@@ -5117,123 +3196,122 @@ function HB_PresetReset()
     S.PreAim=false
     S.StickyAim=false
     S.ProgressiveFlick=false
-    S.AimHumanization=true
     if HB_RageMeter then
         HB_RageMeter_Deactivate("manual")
     end
-    if S.REV_HUMAN then
-        S.REV_HUMAN.warmup=true
-        S.REV_HUMAN.cooldown=true
-        S.REV_HUMAN.fatigue=true
-        S.REV_HUMAN.cognitive=true
-        S.REV_HUMAN.emotion=true
-        S.REV_HUMAN.persona="calculista"
-        S.REV_HUMAN.personaStrength=0.7
-    end
-    if HB_RSI then
-        HB_RSI.evolveEveryKills=5
-    end
-    HB_Toast("🔄 Resetado para padrão","info")
+    print("[HB] Resetado")
 end
-
 HB_ConfigPresetButtons=function()
     local tab=_G.UI and _G.UI.TabContents and _G.UI.TabContents["Config"]
     if not tab or not _G.Cmp then
         return false
     end
-    local y=0
+    local y2=0
     for _,c in ipairs(tab:GetChildren()) do
         if c:IsA("Frame") then
-            y=math.max(y,c.Position.Y.Offset+c.Size.Y.Offset+8)
+            y2=math.max(y2,c.Position.Y.Offset+c.Size.Y.Offset+8)
         end
     end
-    y=_G.Cmp.Section(tab,"⚡ PRESETS — TRYHARD / RAGE MAX",y)
-    y=_G.Cmp.Button(tab,{text="⚡ CARREGAR PRESET TRYHARD",callback=function()
-        HB_PresetTryhard()
-    end},y)
-    y=_G.Cmp.Button(tab,{text="💀 CARREGAR PRESET RAGE MAX (SUPER COMBO)",danger=true,callback=function()
-        HB_PresetRageMax()
-    end},y)
-    y=_G.Cmp.Button(tab,{text="🔄 RESETAR PARA PADRÃO",callback=function()
-        HB_PresetReset()
-    end},y)
+    y2=_G.Cmp.Section(tab,"⚡ PRESETS",y2)
+    y2=_G.Cmp.Button(tab,{text="⚡ CARREGAR TRYHARD",callback=function() HB_PresetTryhard() end},y2)
+    y2=_G.Cmp.Button(tab,{text="💀 CARREGAR RAGE MAX",danger=true,callback=function() HB_PresetRageMax() end},y2)
+    y2=_G.Cmp.Button(tab,{text="🔄 RESETAR",callback=function() HB_PresetReset() end},y2)
     return true
 end
-
 task.delay(2,function()
-    local ok=pcall(HB_ConfigPresetButtons)
-    if not ok then
-        task.delay(3,function()
-            pcall(HB_ConfigPresetButtons)
-        end)
+    pcall(HB_ConfigPresetButtons)
+end)
+HB_PredTabHook=function()
+    local tab=_G.UI and _G.UI.TabContents and _G.UI.TabContents["Revolu"]
+    if not tab or not _G.Cmp then
+        return
+    end
+    local y2=0
+    for _,c in ipairs(tab:GetChildren()) do
+        if c:IsA("Frame") then
+            y2=math.max(y2,c.Position.Y.Offset+c.Size.Y.Offset+8)
+        end
+    end
+    y2=_G.Cmp.Section(tab,"🎯 PREDIÇÃO AVANÇADA",y2)
+    y2=_G.Cmp.Toggle(tab,{text="Multi-Model Blending",default=true,callback=function(v) HB_MultiModel.enabled=v end},y2)
+    y2=_G.Cmp.Toggle(tab,{text="Adaptive FOV",default=true,callback=function(v) HB_AdaptiveFOV.enabled=v end},y2)
+    y2=_G.Cmp.Toggle(tab,{text="Ballistic Curve",default=true,callback=function(v) HB_BallisticCurve.enabled=v end},y2)
+    y2=_G.Cmp.Toggle(tab,{text="Juke Memory",default=true,callback=function(v) HB_JukeMemory.enabled=v end},y2)
+    y2=_G.Cmp.Section(tab,"🔊 FEEDBACK",y2)
+    y2=_G.Cmp.Toggle(tab,{text="Hit Sound",default=true,callback=function(v) HB_HitSound.enabled=v end},y2)
+    y2=_G.Cmp.Toggle(tab,{text="Kill Confirm Sound",default=true,callback=function(v) HB_KillConfirmSound.enabled=v end},y2)
+    y2=_G.Cmp.Section(tab,"💾 AUTO-SAVE",y2)
+    y2=_G.Cmp.Toggle(tab,{text="Auto-Save Enable",default=true,callback=function(v) HB_AutoSave.enabled=v end},y2)
+    y2=_G.Cmp.Button(tab,{text="💾 Salvar Agora",callback=function() HB_AutoSaveTick() end},y2)
+    y2=_G.Cmp.Button(tab,{text="📂 Restaurar",callback=function() HB_AutoSaveLoad() end},y2)
+    y2=_G.Cmp.Button(tab,{text="🗑️ Apagar",danger=true,callback=function() HB_AutoSaveClear() end},y2)
+end
+task.delay(2.5,function()
+    pcall(HB_PredTabHook)
+end)
+HB_MLFinal=MetaLearnUpdate
+MetaLearnUpdate=function(perf)
+    HB_MLFinal(perf)
+    if perf and perf>0.5 then
+        pcall(HB_PlayKillSound)
+        pcall(HB_RSI_RecordKill)
+        if HB_RageMeter.active then
+            HB_RageMeter.rageKills=HB_RageMeter.rageKills+1
+            if Flick then
+                Flick.snapDur=math.max(0.005,Flick.snapDur*0.92)
+            end
+        end
+    else
+        pcall(HB_PlayHitSound)
+        pcall(HB_RSI_RecordMiss)
+    end
+end
+task.spawn(function()
+    while task.wait(1) do
+        if HB_RSI.enabled then
+            pcall(HB_RSI_Apply)
+        end
     end
 end)
-
-TriggerSuppressUntil=0
-
 task.spawn(function()
-    while task.wait(1/30) do
-        if S.TrigOn then
-            local flickBusy=Flick and (Flick.active or (tick()-(Flick.lastFlickEnd or 0))<0.25)
-            local suppressed=tick()<TriggerSuppressUntil
-            local flickKeyHeld=Flick and Flick.keyHeld
-            if not flickBusy and not suppressed and not flickKeyHeld then
-                local mouse=UIS:GetMouseLocation()
-                local best,bestD=nil,S.TrigRad
-                for _,p in ipairs(Cache.List) do
-                    if p~=LP and GetRole(p)=="Murderer" then
-                        local head=Cache.Heads[p]
-                        if head then
-                            local sp,on=Camera:WorldToViewportPoint(head.Position)
-                            if on then
-                                local d=(Vector2.new(sp.X,sp.Y)-mouse).Magnitude
-                                if d<bestD then
-                                    bestD=d
-                                    best=p
-                                end
-                            end
-                        end
-                    end
-                end
-                if best then
-                    local w=FindWeapon()
-                    if w then
-                        local head=Cache.Heads[best]
-                        if head then
-                            local eq=LP.Character and LP.Character:FindFirstChildOfClass("Tool")
-                            if eq~=w then
-                                EquipWeapon(w)
-                                task.wait(0.05)
-                                eq=LP.Character:FindFirstChildOfClass("Tool")
-                            end
-                            if eq and not IsWeaponOnCooldown(eq) then
-                                local preFlickEnd=Flick.lastFlickEnd or 0
-                                SilentFire(eq,head.Position)
-                                if Flick.lastFlickEnd and Flick.lastFlickEnd>preFlickEnd then
-                                    TriggerSuppressUntil=tick()+0.30
-                                end
-                            end
-                        end
+    while task.wait(0.1) do
+        pcall(HB_UpdateAdaptiveFOV)
+    end
+end)
+task.spawn(function()
+    while task.wait(0.5) do
+        if HB_JukeMemory.enabled then
+            for _,p2 in ipairs(Cache.List) do
+                if p2~=LP then
+                    local h=Hst[p2]
+                    if h then
+                        pcall(HB_JukeMemoryAnalyze,p2,h)
                     end
                 end
             end
         end
     end
 end)
-
+task.spawn(function()
+    while task.wait(5) do
+        if HB_AutoSave.enabled then
+            pcall(HB_AutoSaveTick)
+        end
+    end
+end)
+TriggerSuppressUntil=0
 if Flick then
-    local oldEndFlick=EndFlick
+    local oldEnd=EndFlick
     EndFlick=function()
         TriggerSuppressUntil=tick()+0.30
-        oldEndFlick()
+        oldEnd()
     end
-    local oldStartFlick=StartFlick
+    local oldStart=StartFlick
     StartFlick=function(target,tb)
         TriggerSuppressUntil=tick()+0.50
-        oldStartFlick(target,tb)
+        oldStart(target,tb)
     end
 end
-
 UIS.InputBegan:Connect(function(input,gp)
     if gp then
         return
@@ -5253,21 +3331,17 @@ UIS.InputBegan:Connect(function(input,gp)
         HB_PresetRageMax()
     end
 end)
-
 S.TrigOn=false
-
+UI.switchTab("Aimbot")
+UI_main.Visible=true
+HB_AutoSaveLoad()
 print("═══════════════════════════════════════════")
-print("✅ PACOTE FINAL CARREGADO")
+print("✅ HELLBORN v9.0 — COMPLETO")
 print("═══════════════════════════════════════════")
-print("🧬 RSI — Auto-melhora por kill")
-print("💀 Rage Meter — Ativa início, dura partida toda")
-print("⚡ TRYHARD — Config ou F4")
-print("💀💀💀 RAGE MAX — SUPER COMBO (Config ou F5)")
-print("🔧 Trigger fix — Respeita Flick")
-print("🔴 Trigger OFF por padrão")
-print("⌨️  F3 Rage · F4 Tryhard · F5 Rage Max")
+print("⌨️  Insert = Menu | Q = Flick | F1 = Panic")
+print("⌨️  F3 = Rage | F4 = Tryhard | F5 = Rage Max")
+print("🎯 ESP · Chams · Radar · Timeline")
+print("🧬 RSI (auto-melhora) · 💀 Rage Meter")
+print("⚡ TRYHARD / RAGE MAX presets")
+print("🔊 Hit + Kill Sounds · 💾 Auto-Save")
 print("═══════════════════════════════════════════")
-HB_RageMeter.enabled=false
-HB_RageFrame.Visible=false
-S.ThreatLivePanel=false
-S.RSIOverlay=false
