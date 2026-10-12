@@ -4211,6 +4211,7 @@ print("🎯 ESP: 🔴 Murderer | 🔵 Sheriff | 🟢 Innocent")
 print("⌨️  Insert = menu | Q = Flick | F1 = Panic | F2 = Legacy")
 print("💡 HBShowAllRoles() pra debug")
 print("═══════════════════════════════════════════")
+
 HB_RSI={
     enabled=true,
     generation=1,
@@ -4359,12 +4360,9 @@ function HB_RSI_Apply()
     if not g or not Flick then
         return
     end
-    local targetSnap=g.snap
-    local targetHold=g.hold
-    local targetVerify=g.verify
-    Flick.snapDur=Flick.snapDur*0.85+targetSnap*0.15
-    Flick.holdDur=Flick.holdDur*0.85+targetHold*0.15
-    Flick.verifyWait=Flick.verifyWait*0.85+targetVerify*0.15
+    Flick.snapDur=Flick.snapDur*0.85+g.snap*0.15
+    Flick.holdDur=Flick.holdDur*0.85+g.hold*0.15
+    Flick.verifyWait=Flick.verifyWait*0.85+g.verify*0.15
     if S.AimNoiseAmp then
         S.AimNoiseAmp=S.AimNoiseAmp*0.85+g.noise*0.15
     end
@@ -4405,7 +4403,7 @@ HB_RSI_Gui=HB_Create("ScreenGui",{Name="HB_RSI_Overlay",ResetOnSpawn=false,Ignor
 HB_RSI_Frame=HB_Create("Frame",{Name="RSI",Size=UDim2.new(0,240,0,140),Position=UDim2.new(0,10,0,300),BackgroundColor3=Color3.fromRGB(18,18,22),BackgroundTransparency=0.15,BorderSizePixel=0,Visible=false,ZIndex=70},HB_RSI_Gui)
 HB_Corner(HB_RSI_Frame,10)
 HB_Stroke(HB_RSI_Frame,Color3.fromRGB(150,100,255),2,0.3)
-HB_RSI_Title=HB_Create("TextLabel",{Size=UDim2.new(1,0,0,22),Position=UDim2.new(0,0,0,4),BackgroundTransparency=1,Text="🧬 RECURSIVE SELF-IMPROVEMENT",Font=Enum.Font.GothamBold,TextSize=11,TextColor3=Color3.fromRGB(200,180,255),TextXAlignment=Enum.TextXAlignment.Center,ZIndex=71},HB_RSI_Frame)
+HB_Create("TextLabel",{Size=UDim2.new(1,0,0,22),Position=UDim2.new(0,0,0,4),BackgroundTransparency=1,Text="🧬 RECURSIVE SELF-IMPROVEMENT",Font=Enum.Font.GothamBold,TextSize=11,TextColor3=Color3.fromRGB(200,180,255),TextXAlignment=Enum.TextXAlignment.Center,ZIndex=71},HB_RSI_Frame)
 HB_RSI_Info=HB_Create("TextLabel",{Size=UDim2.new(1,-16,1,-30),Position=UDim2.new(0,8,0,26),BackgroundTransparency=1,Text="",Font=Enum.Font.Code,TextSize=10,TextColor3=Color3.fromRGB(245,245,250),TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,TextWrapped=true,ZIndex=71},HB_RSI_Frame)
 
 task.spawn(function()
@@ -4442,9 +4440,15 @@ task.spawn(function()
     end
 end)
 
-HB_RSI_OrigMeta=MetaLearnUpdate
+RS.RenderStepped:Connect(function()
+    if HB_RSI_Frame then
+        HB_RSI_Frame.Visible=S.RSIOverlay==true
+    end
+end)
+
+HB_RSI_OrigML=MetaLearnUpdate
 MetaLearnUpdate=function(perf)
-    HB_RSI_OrigMeta(perf)
+    HB_RSI_OrigML(perf)
     if not HB_RSI.enabled then
         return
     end
@@ -4454,20 +4458,6 @@ MetaLearnUpdate=function(perf)
         pcall(HB_RSI_RecordMiss)
     end
 end
-
-HB_RSI_OrigFinalize=HB_RSI_Apply
-HB_RSI_Apply=function()
-    HB_RSI_OrigFinalize()
-    if HB_RSI.enabled and HB_RSI_Frame then
-        HB_RSI_Frame.Visible=S.RSIOverlay==true
-    end
-end
-
-RS.RenderStepped:Connect(function()
-    if HB_RSI.enabled and HB_RSI_Frame then
-        HB_RSI_Frame.Visible=S.RSIOverlay==true
-    end
-end)
 
 function HB_RSI_ForceEvolve()
     HB_RSI.killsSinceEvolve=0
@@ -4532,4 +4522,748 @@ end)
 
 HB_RSI.enabled=S.RSIEnabled
 
-print("[HB] ✅ Recursive Self-Improvement Loop ativo — Gen "..HB_RSI.generation)
+HB_RageMeter={
+    enabled=true,
+    active=false,
+    activatedAt=0,
+    roundStartTick=0,
+    lastRoundCheck=0,
+    rageKills=0,
+    rageDeaths=0,
+    myDeathThisRound=false,
+    boostSnap=0.5,
+    boostHold=0.5,
+    boostVerify=0.5,
+    originalValues={},
+}
+
+function HB_RageMeter_SaveOriginals()
+    if not Flick then
+        return
+    end
+    HB_RageMeter.originalValues={
+        snapDur=Flick.snapDur,
+        holdDur=Flick.holdDur,
+        verifyWait=Flick.verifyWait,
+        alignTol=S.AlignTol,
+        retries=S.Retries,
+        rateLimit=S.RateLimit,
+        fakeMiss=S.FakeMiss,
+        antiFlick=S.AntiFlickBlock,
+    }
+end
+
+function HB_RageMeter_Activate()
+    if not HB_RageMeter.enabled or HB_RageMeter.active then
+        return
+    end
+    HB_RageMeter_SaveOriginals()
+    HB_RageMeter.active=true
+    HB_RageMeter.activatedAt=tick()
+    HB_RageMeter.rageKills=0
+    HB_RageMeter.rageDeaths=0
+    HB_RageMeter.myDeathThisRound=false
+    if Flick then
+        Flick.snapDur=Flick.snapDur*HB_RageMeter.boostSnap
+        Flick.holdDur=Flick.holdDur*HB_RageMeter.boostHold
+        Flick.verifyWait=Flick.verifyWait*HB_RageMeter.boostVerify
+        Flick.retriesLeft=20
+    end
+    S.AlignTol=math.max(1,S.AlignTol*0.5)
+    S.Retries=20
+    S.RateLimit=false
+    S.FakeMiss=false
+    S.AntiFlickBlock=false
+    HB_Toast("💀 RAGE MODE ATIVO — PARTIDA TODA","danger")
+end
+
+function HB_RageMeter_Deactivate(reason)
+    if not HB_RageMeter.active then
+        return
+    end
+    HB_RageMeter.active=false
+    local o=HB_RageMeter.originalValues
+    if Flick then
+        if o.snapDur then
+            Flick.snapDur=o.snapDur
+        end
+        if o.holdDur then
+            Flick.holdDur=o.holdDur
+        end
+        if o.verifyWait then
+            Flick.verifyWait=o.verifyWait
+        end
+    end
+    if o.alignTol then
+        S.AlignTol=o.alignTol
+        S.Retries=o.retries
+        S.RateLimit=o.rateLimit
+        S.FakeMiss=o.fakeMiss
+        S.AntiFlickBlock=o.antiFlick
+    end
+    if reason=="death" then
+        HB_Toast(string.format("💀 RAGE OFF — Morreu · %dK/%dD",HB_RageMeter.rageKills,HB_RageMeter.rageDeaths),"warning")
+    elseif reason=="round_end" then
+        HB_Toast(string.format("💀 RAGE OFF — Fim do round · %dK/%dD",HB_RageMeter.rageKills,HB_RageMeter.rageDeaths),"warning")
+    elseif reason=="manual" then
+        HB_Toast("💀 RAGE OFF — Manual","info")
+    end
+end
+
+function HB_RageMeter_IsAlive()
+    local myChar=LP.Character
+    if not myChar then
+        return false
+    end
+    local myHum=myChar:FindFirstChildOfClass("Humanoid")
+    if not myHum or myHum.Health<=0 then
+        return false
+    end
+    return true
+end
+
+function HB_RageMeter_DetectRoundStart()
+    local now=tick()
+    if now-HB_RageMeter.lastRoundCheck<1 then
+        return false
+    end
+    HB_RageMeter.lastRoundCheck=now
+    if not HB_RageMeter_IsAlive() then
+        return false
+    end
+    local aliveCount=0
+    local murdererCount=0
+    local totalPlayers=0
+    for _,p in ipairs(Cache.List) do
+        totalPlayers=totalPlayers+1
+        local ch=Cache.Chars[p]
+        if ch then
+            local hum=ch:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health>0 then
+                aliveCount=aliveCount+1
+                if GetRole(p)=="Murderer" then
+                    murdererCount=murdererCount+1
+                end
+            end
+        end
+    end
+    if aliveCount>=totalPlayers-1 and murdererCount>=1 then
+        if now-HB_RageMeter.roundStartTick>15 then
+            HB_RageMeter.roundStartTick=now
+            return true
+        end
+    end
+    return false
+end
+
+function HB_RageMeter_DetectRoundEnd()
+    if not HB_RageMeter.active then
+        return false
+    end
+    if not HB_RageMeter_IsAlive() then
+        if not HB_RageMeter.myDeathThisRound then
+            HB_RageMeter.myDeathThisRound=true
+            HB_RageMeter.rageDeaths=HB_RageMeter.rageDeaths+1
+            return "death"
+        end
+        return false
+    end
+    local aliveMurderers=0
+    for _,p in ipairs(Cache.List) do
+        if p~=LP and GetRole(p)=="Murderer" then
+            local ch=Cache.Chars[p]
+            if ch then
+                local hum=ch:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health>0 then
+                    aliveMurderers=aliveMurderers+1
+                end
+            end
+        end
+    end
+    local myRole=GetRole(LP)
+    if myRole=="Murderer" then
+        local aliveInnocents=0
+        for _,p in ipairs(Cache.List) do
+            if p~=LP then
+                local role=GetRole(p)
+                if role=="Innocent" or role=="Sheriff" then
+                    local ch=Cache.Chars[p]
+                    if ch then
+                        local hum=ch:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health>0 then
+                            aliveInnocents=aliveInnocents+1
+                        end
+                    end
+                end
+            end
+        end
+        if aliveInnocents==0 then
+            return "round_end"
+        end
+    else
+        if aliveMurderers==0 then
+            return "round_end"
+        end
+    end
+    return false
+end
+
+task.spawn(function()
+    while task.wait(0.5) do
+        if HB_RageMeter.enabled then
+            if not HB_RageMeter.active then
+                local roundStart=HB_RageMeter_DetectRoundStart()
+                if roundStart then
+                    task.wait(math.random(1,3))
+                    pcall(HB_RageMeter_Activate)
+                end
+            else
+                local endReason=HB_RageMeter_DetectRoundEnd()
+                if endReason then
+                    pcall(HB_RageMeter_Deactivate,endReason)
+                end
+            end
+        end
+    end
+end)
+
+HB_RageMeter_OrigML=MetaLearnUpdate
+MetaLearnUpdate=function(perf)
+    HB_RageMeter_OrigML(perf)
+    if HB_RageMeter.active then
+        if perf and perf>0.5 then
+            HB_RageMeter.rageKills=HB_RageMeter.rageKills+1
+            if Flick then
+                Flick.snapDur=math.max(0.005,Flick.snapDur*0.92)
+            end
+        end
+    end
+end
+
+HB_RageGui=HB_Create("ScreenGui",{Name="HB_RageMeter",ResetOnSpawn=false,IgnoreGuiInset=true,DisplayOrder=92},PG)
+HB_RageFrame=HB_Create("Frame",{Name="RageMeter",Size=UDim2.new(0,300,0,70),Position=UDim2.new(0.5,-150,0,80),BackgroundColor3=Color3.fromRGB(40,0,0),BackgroundTransparency=0.2,BorderSizePixel=0,Visible=false,ZIndex=80},HB_RageGui)
+HB_Corner(HB_RageFrame,10)
+HB_RageStroke=HB_Create("UIStroke",{Color=Color3.fromRGB(255,0,0),Thickness=3,Transparency=0},HB_RageFrame)
+HB_Create("TextLabel",{Size=UDim2.new(1,0,0,26),Position=UDim2.new(0,0,0,4),BackgroundTransparency=1,Text="💀 RAGE MODE — PARTIDA TODA 💀",Font=Enum.Font.GothamBlack,TextSize=15,TextColor3=Color3.fromRGB(255,100,100),TextXAlignment=Enum.TextXAlignment.Center,ZIndex=81},HB_RageFrame)
+HB_RageTimer=HB_Create("TextLabel",{Size=UDim2.new(0.5,0,0,20),Position=UDim2.new(0,10,0,32),BackgroundTransparency=1,Text="00:00",Font=Enum.Font.Code,TextSize=14,TextColor3=Color3.fromRGB(255,255,255),TextXAlignment=Enum.TextXAlignment.Left,ZIndex=81},HB_RageFrame)
+HB_RageStats=HB_Create("TextLabel",{Size=UDim2.new(0.5,0,0,20),Position=UDim2.new(0.5,0,0,32),BackgroundTransparency=1,Text="0K / 0D",Font=Enum.Font.Code,TextSize=14,TextColor3=Color3.fromRGB(255,180,180),TextXAlignment=Enum.TextXAlignment.Right,ZIndex=81},HB_RageFrame)
+HB_Create("TextLabel",{Size=UDim2.new(1,0,0,14),Position=UDim2.new(0,0,0,52),BackgroundTransparency=1,Text="Ativo até morrer ou fim do round",Font=Enum.Font.Gotham,TextSize=10,TextColor3=Color3.fromRGB(200,120,120),TextXAlignment=Enum.TextXAlignment.Center,ZIndex=81},HB_RageFrame)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        if HB_RageMeter.active then
+            HB_RageFrame.Visible=true
+            local elapsed=tick()-HB_RageMeter.activatedAt
+            local mins=math.floor(elapsed/60)
+            local secs=math.floor(elapsed%60)
+            HB_RageTimer.Text=string.format("%02d:%02d",mins,secs)
+            HB_RageStats.Text=string.format("%dK / %dD",HB_RageMeter.rageKills,HB_RageMeter.rageDeaths)
+            local pulse=math.sin(tick()*6)*0.5+0.5
+            HB_RageStroke.Transparency=0.1+pulse*0.4
+            HB_RageStroke.Thickness=2+pulse*2
+        else
+            HB_RageFrame.Visible=false
+        end
+    end
+end)
+
+function HB_RageMeter_ForceActivate()
+    HB_RageMeter.roundStartTick=0
+    HB_RageMeter_Activate()
+end
+
+HB_Presets=HB_Presets or {}
+
+HB_Presets.TRYHARD={
+    AutoFlick=true,
+    AlignTol=1,
+    Retries=20,
+    AimSmooth=0.02,
+    FlickMode="Rage",
+    TrigOn=false,
+    TrigRad=250,
+    TrigCD=0.05,
+    RateLimit=false,
+    FakeMiss=false,
+    Humanize=false,
+    AntiFlickBlock=false,
+    RandomAim=false,
+    MouseSim=false,
+    MicroDev=false,
+    ReactDelay=false,
+    Backoff=false,
+    FakeIn=false,
+    ESP=true,
+    ESPName=true,
+    ESP_LOD=false,
+    Chams=true,
+    ESPArrows=true,
+    ESPSkeleton=true,
+    Radar=true,
+    TimelinePredictor=true,
+    Hitmark=true,
+    KillFeed=true,
+    Cross=true,
+    CrossSize=14,
+    FPSAdaptive=true,
+    FPSAdaptiveMinFPS=30,
+    HitscanOpt=true,
+    WeaponCooldownCheck=false,
+    PostKillDelay=false,
+    PostKillDelayMs=0,
+    PreAim=true,
+    StickyAim=true,
+    StickyAimStrength=0.6,
+    ProgressiveFlick=true,
+    SmartTarget=true,
+    AIM_On=true,
+    AIOn=true,
+    NNReal=true,
+    NNRate=0.05,
+    HumanCameraSettle=false,
+    IdlePattern=false,
+    PassiveAntiReport=false,
+    MuzzleFlash=true,
+    FootstepESP=true,
+    RSIEnabled=true,
+    RSIOverlay=true,
+    ThreatLivePanel=true,
+    PriorityQueue=true,
+    PredictableFlag=true,
+    PostFlickStats=true,
+    ConfidenceBar=true,
+    AdaptiveSnap=true,
+    PersonalityProfiles=true,
+    WeaponLearning=true,
+    DNASystem=true,
+    LivingMap=true,
+    ABTesting=true,
+    EmotionalAI=true,
+    AntiMetaAdapt=true,
+    DeathRecap3D=true,
+}
+
+HB_Presets.RAGE_MAX={
+    AutoFlick=true,
+    AlignTol=0.5,
+    Retries=99,
+    AimSmooth=0.0,
+    FlickMode="Rage",
+    TrigOn=false,
+    TrigRad=999,
+    TrigCD=0.0,
+    RateLimit=false,
+    FakeMiss=false,
+    Humanize=false,
+    AntiFlickBlock=false,
+    RandomAim=false,
+    MouseSim=false,
+    MicroDev=false,
+    ReactDelay=false,
+    Backoff=false,
+    FakeIn=false,
+    ESP=true,
+    ESPName=true,
+    ESP_LOD=false,
+    ESPThick=3,
+    Chams=true,
+    ESPArrows=true,
+    ESPSkeleton=true,
+    Radar=true,
+    TimelinePredictor=true,
+    Hitmark=true,
+    KillFeed=true,
+    Cross=true,
+    CrossSize=20,
+    FPSAdaptive=true,
+    FPSAdaptiveMinFPS=15,
+    HitscanOpt=true,
+    WeaponCooldownCheck=false,
+    PostKillDelay=false,
+    PostKillDelayMs=0,
+    PreAim=true,
+    StickyAim=true,
+    StickyAimStrength=1.0,
+    ProgressiveFlick=true,
+    SmartTarget=true,
+    AimHumanization=false,
+    AIM_On=true,
+    AIOn=true,
+    NNReal=true,
+    NNRate=0.20,
+    HumanCameraSettle=false,
+    IdlePattern=false,
+    PassiveAntiReport=false,
+    MuzzleFlash=true,
+    FootstepESP=true,
+    RSIEnabled=true,
+    RSIOverlay=false,
+    ThreatLivePanel=false,
+    PriorityQueue=true,
+    PredictableFlag=true,
+    PostFlickStats=false,
+    ConfidenceBar=false,
+    AdaptiveSnap=true,
+    PersonalityProfiles=false,
+    WeaponLearning=false,
+    DNASystem=true,
+    LivingMap=true,
+    ABTesting=false,
+    EmotionalAI=false,
+    AntiMetaAdapt=false,
+    DeathRecap3D=false,
+    HysteresisMs=0,
+    AntiFlickBackoff=0,
+    FPSAdaptiveMinFPS=15,
+}
+
+function HB_ApplyPreset(name)
+    local preset=HB_Presets[name]
+    if not preset then
+        HB_Toast("Preset desconhecido: "..tostring(name),"danger")
+        return
+    end
+    for k,v in pairs(preset) do
+        S[k]=v
+    end
+    if Flick then
+        if name=="RAGE_MAX" then
+            Flick.snapDur=0.001
+            Flick.holdDur=0.010
+            Flick.verifyWait=0.050
+            Flick.returnDur=0.020
+            Flick.retriesLeft=999
+        else
+            Flick.snapDur=0.010
+            Flick.holdDur=0.050
+            Flick.verifyWait=0.200
+            Flick.returnDur=0.060
+            Flick.retriesLeft=20
+        end
+    end
+    if S.REV_HUMAN then
+        S.REV_HUMAN.warmup=false
+        S.REV_HUMAN.cooldown=false
+        S.REV_HUMAN.fatigue=false
+        S.REV_HUMAN.cognitive=false
+        S.REV_HUMAN.emotion=false
+        S.REV_HUMAN.altDetect=false
+        S.REV_HUMAN.squad=false
+        S.REV_HUMAN.reputation=false
+        if name=="RAGE_MAX" then
+            S.REV_HUMAN.persona="aggressive"
+            S.REV_HUMAN.personaStrength=1.0
+        else
+            S.REV_HUMAN.persona="calculista"
+            S.REV_HUMAN.personaStrength=0.7
+        end
+    end
+    if S.REV_PHYS then
+        S.REV_PHYS.ballistic=true
+        S.REV_PHYS.rayTrace=true
+        S.REV_PHYS.ik=true
+        S.REV_PHYS.animMirror=true
+        S.REV_PHYS.gameStateRecon=true
+        S.REV_PHYS.serverMirror=true
+        S.REV_PHYS.latency2=true
+        S.REV_PHYS.jitterBuf=true
+    end
+    if S.REV_SOCIAL then
+        S.REV_SOCIAL.antiAttr=false
+        S.REV_SOCIAL.misdirect=false
+        S.REV_SOCIAL.bait=false
+        S.REV_SOCIAL.antiReport=false
+        S.REV_SOCIAL.skillCurve=false
+        S.REV_SOCIAL.mimicry=false
+        S.REV_SOCIAL.p2p=false
+        S.REV_SOCIAL.zkProof=false
+    end
+    if S.REV_STEALTH then
+        S.REV_STEALTH.advExamples=true
+        S.REV_STEALTH.jitterDist=false
+        S.REV_STEALTH.antiAntiCheat=false
+        S.REV_STEALTH.adaptiveRate=false
+        S.REV_STEALTH.plausible=false
+        S.REV_STEALTH.steganog=false
+        S.REV_STEALTH.obfuscate=false
+    end
+    if S.REV_AI then
+        S.REV_AI.meta=true
+        S.REV_AI.nas=true
+        S.REV_AI.cloning=true
+        S.REV_AI.selfPlay=true
+        S.REV_AI.worldModel=true
+        S.REV_AI.activeInf=true
+        S.REV_AI.transformer=true
+        S.REV_AI.moe=true
+        S.REV_AI.uncert=(name~="RAGE_MAX")
+        S.REV_AI.causal=true
+        S.REV_AI.counterfact=true
+        S.REV_AI.adversarial=true
+        S.REV_AI.transfer=true
+        S.REV_AI.federated=true
+        S.REV_AI.lifelong=true
+        if name=="RAGE_MAX" then
+            S.REV_AI.uncertThreshold=0.05
+            S.REV_AI.metaLR=0.05
+            S.REV_AI.selfPlayEpochs=500
+        end
+    end
+    if S.REV_MAD then
+        S.REV_MAD.neuroSym=true
+        S.REV_MAD.quantum=true
+        S.REV_MAD.evolutionary=true
+        S.REV_MAD.swarm=true
+        S.REV_MAD.genetic=true
+        S.REV_MAD.antColony=true
+        S.REV_MAD.digitalTwin=true
+        S.REV_MAD.sleepWake=true
+        S.REV_MAD.curriculum=true
+        S.REV_MAD.dreamState=true
+        S.REV_MAD.recursive=true
+        if name=="RAGE_MAX" then
+            S.REV_MAD.quantumTemp=500
+            S.REV_MAD.evoPop=100
+            S.REV_MAD.evoGens=200
+            S.REV_MAD.swarmN=20
+            S.REV_MAD.antN=50
+            S.REV_MAD.recursiveInterval=100
+        end
+    end
+    if S.REV_ARCH then
+        S.REV_ARCH.rollback=true
+        S.REV_ARCH.diffSync=true
+        S.REV_ARCH.aotCompile=true
+        S.REV_ARCH.hotSwap=true
+    end
+    if S.REV_FEAT then
+        S.REV_FEAT.whatIf=true
+        S.REV_FEAT.forecast=true
+        S.REV_FEAT.director=(name~="RAGE_MAX")
+        S.REV_FEAT.wager=true
+        S.REV_FEAT.blockchain=false
+        if name=="RAGE_MAX" then
+            S.REV_FEAT.whatIfIter=10000
+        end
+    end
+    if S.REV_GAME then
+        S.REV_GAME.multiRound=true
+        S.REV_GAME.metaGame=true
+        S.REV_GAME.roleRot=true
+        S.REV_GAME.legendary=true
+        S.REV_GAME.adaptDiff=true
+        if name=="RAGE_MAX" then
+            S.REV_GAME.legendaryThreshold=3
+            S.REV_GAME.multiRoundDepth=10
+        end
+    end
+    if HB_RSI then
+        HB_RSI.enabled=true
+        if name=="RAGE_MAX" then
+            HB_RSI.evolveEveryKills=2
+        else
+            HB_RSI.evolveEveryKills=5
+        end
+    end
+    if HB_RageMeter then
+        HB_RageMeter.enabled=true
+        if name=="RAGE_MAX" then
+            HB_RageMeter.boostSnap=0.10
+            HB_RageMeter.boostHold=0.10
+            HB_RageMeter.boostVerify=0.10
+        else
+            HB_RageMeter.boostSnap=0.30
+            HB_RageMeter.boostHold=0.30
+            HB_RageMeter.boostVerify=0.30
+        end
+    end
+    if name=="RAGE_MAX" then
+        HB_Toast("💀💀💀 RAGE MAX — SUPER COMBO ATIVADO","danger")
+    else
+        HB_Toast("⚡ TRYHARD ATIVADO","success")
+    end
+end
+
+function HB_PresetTryhard()
+    HB_ApplyPreset("TRYHARD")
+end
+
+function HB_PresetRageMax()
+    HB_ApplyPreset("RAGE_MAX")
+end
+
+function HB_PresetReset()
+    if Flick then
+        Flick.snapDur=0.045
+        Flick.holdDur=0.150
+        Flick.verifyWait=0.500
+        Flick.returnDur=0.100
+        Flick.retriesLeft=2
+    end
+    S.AlignTol=4
+    S.Retries=2
+    S.AimSmooth=0.15
+    S.FakeMiss=false
+    S.RateLimit=true
+    S.Humanize=true
+    S.AntiFlickBlock=true
+    S.TrigOn=false
+    S.ESP=false
+    S.Chams=false
+    S.ESPArrows=false
+    S.ESPSkeleton=false
+    S.Radar=false
+    S.TimelinePredictor=false
+    S.PreAim=false
+    S.StickyAim=false
+    S.ProgressiveFlick=false
+    S.AimHumanization=true
+    if HB_RageMeter then
+        HB_RageMeter_Deactivate("manual")
+    end
+    if S.REV_HUMAN then
+        S.REV_HUMAN.warmup=true
+        S.REV_HUMAN.cooldown=true
+        S.REV_HUMAN.fatigue=true
+        S.REV_HUMAN.cognitive=true
+        S.REV_HUMAN.emotion=true
+        S.REV_HUMAN.persona="calculista"
+        S.REV_HUMAN.personaStrength=0.7
+    end
+    if HB_RSI then
+        HB_RSI.evolveEveryKills=5
+    end
+    HB_Toast("🔄 Resetado para padrão","info")
+end
+
+HB_ConfigPresetButtons=function()
+    local tab=_G.UI and _G.UI.TabContents and _G.UI.TabContents["Config"]
+    if not tab or not _G.Cmp then
+        return false
+    end
+    local y=0
+    for _,c in ipairs(tab:GetChildren()) do
+        if c:IsA("Frame") then
+            y=math.max(y,c.Position.Y.Offset+c.Size.Y.Offset+8)
+        end
+    end
+    y=_G.Cmp.Section(tab,"⚡ PRESETS — TRYHARD / RAGE MAX",y)
+    y=_G.Cmp.Button(tab,{text="⚡ CARREGAR PRESET TRYHARD",callback=function()
+        HB_PresetTryhard()
+    end},y)
+    y=_G.Cmp.Button(tab,{text="💀 CARREGAR PRESET RAGE MAX (SUPER COMBO)",danger=true,callback=function()
+        HB_PresetRageMax()
+    end},y)
+    y=_G.Cmp.Button(tab,{text="🔄 RESETAR PARA PADRÃO",callback=function()
+        HB_PresetReset()
+    end},y)
+    return true
+end
+
+task.delay(2,function()
+    local ok=pcall(HB_ConfigPresetButtons)
+    if not ok then
+        task.delay(3,function()
+            pcall(HB_ConfigPresetButtons)
+        end)
+    end
+end)
+
+TriggerSuppressUntil=0
+
+task.spawn(function()
+    while task.wait(1/30) do
+        if S.TrigOn then
+            local flickBusy=Flick and (Flick.active or (tick()-(Flick.lastFlickEnd or 0))<0.25)
+            local suppressed=tick()<TriggerSuppressUntil
+            local flickKeyHeld=Flick and Flick.keyHeld
+            if not flickBusy and not suppressed and not flickKeyHeld then
+                local mouse=UIS:GetMouseLocation()
+                local best,bestD=nil,S.TrigRad
+                for _,p in ipairs(Cache.List) do
+                    if p~=LP and GetRole(p)=="Murderer" then
+                        local head=Cache.Heads[p]
+                        if head then
+                            local sp,on=Camera:WorldToViewportPoint(head.Position)
+                            if on then
+                                local d=(Vector2.new(sp.X,sp.Y)-mouse).Magnitude
+                                if d<bestD then
+                                    bestD=d
+                                    best=p
+                                end
+                            end
+                        end
+                    end
+                end
+                if best then
+                    local w=FindWeapon()
+                    if w then
+                        local head=Cache.Heads[best]
+                        if head then
+                            local eq=LP.Character and LP.Character:FindFirstChildOfClass("Tool")
+                            if eq~=w then
+                                EquipWeapon(w)
+                                task.wait(0.05)
+                                eq=LP.Character:FindFirstChildOfClass("Tool")
+                            end
+                            if eq and not IsWeaponOnCooldown(eq) then
+                                local preFlickEnd=Flick.lastFlickEnd or 0
+                                SilentFire(eq,head.Position)
+                                if Flick.lastFlickEnd and Flick.lastFlickEnd>preFlickEnd then
+                                    TriggerSuppressUntil=tick()+0.30
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+if Flick then
+    local oldEndFlick=EndFlick
+    EndFlick=function()
+        TriggerSuppressUntil=tick()+0.30
+        oldEndFlick()
+    end
+    local oldStartFlick=StartFlick
+    StartFlick=function(target,tb)
+        TriggerSuppressUntil=tick()+0.50
+        oldStartFlick(target,tb)
+    end
+end
+
+UIS.InputBegan:Connect(function(input,gp)
+    if gp then
+        return
+    end
+    if input.KeyCode==Enum.KeyCode.F3 then
+        if HB_RageMeter.active then
+            HB_RageMeter_Deactivate("manual")
+        else
+            HB_RageMeter.roundStartTick=0
+            HB_RageMeter_Activate()
+        end
+    end
+    if input.KeyCode==Enum.KeyCode.F4 then
+        HB_PresetTryhard()
+    end
+    if input.KeyCode==Enum.KeyCode.F5 then
+        HB_PresetRageMax()
+    end
+end)
+
+S.TrigOn=false
+
+print("═══════════════════════════════════════════")
+print("✅ PACOTE FINAL CARREGADO")
+print("═══════════════════════════════════════════")
+print("🧬 RSI — Auto-melhora por kill")
+print("💀 Rage Meter — Ativa início, dura partida toda")
+print("⚡ TRYHARD — Config ou F4")
+print("💀💀💀 RAGE MAX — SUPER COMBO (Config ou F5)")
+print("🔧 Trigger fix — Respeita Flick")
+print("🔴 Trigger OFF por padrão")
+print("⌨️  F3 Rage · F4 Tryhard · F5 Rage Max")
+print("═══════════════════════════════════════════")
