@@ -1,30 +1,7 @@
--- [KILLSWITCH]
-if _G.HB and _G.HB.CONNECTIONS then
-    for i = 1, #_G.HB.CONNECTIONS do
-        pcall(function() _G.HB.CONNECTIONS[i]:Disconnect() end)
-    end
-end
-_G.HB = nil
-_G.HB_ALIVE = nil
-_G.HB_KILL = nil
-for _, g in ipairs(game:GetService("Players").LocalPlayer.PlayerGui:GetChildren()) do
-    if g:IsA("ScreenGui") and (g.Name:find("HB_") or g.Name:find("HELLBORN")) then
-        pcall(function() g:Destroy() end)
-    end
-end
-for _, o in ipairs(game:GetService("Lighting"):GetChildren()) do
-    if o.Name:find("HB_") then pcall(function() o:Destroy() end) end
-end
-for _, o in ipairs(workspace:GetChildren()) do
-    if o.Name:find("HB_") then pcall(function() o:Destroy() end) end
-end
-pcall(function() game:GetService("UserInputService").MouseIconEnabled = true end)
-print("[HB] Killswitch OK")
 --==============================================================
--- HELLBORN v10.0 — BLOCO 1/2 CORE
--- ULTRA PRECISION · ONE SHOT · SHARINGAN · SCREEN STRETCH
+-- HELLBORN v10.1 — HACK MODE (ULTRA PRECISION · 1 SHOT · WALL ON)
+-- HRP rotation · FPS-aware lead · Multipoint LOS · WallCheck no fire
 --==============================================================
-
 if _G.HB_ALIVE then warn("[HELLBORN] Instância já rodando!"); return end
 _G.HB_ALIVE = true
 
@@ -84,7 +61,7 @@ _G.HB.CONNECTIONS = HB_CONNS
 local HB_G = _G.HB
 HB_G.DEBUG = HB_G.DEBUG or {murders=0, sheriffs=0, innocents=0, lastQueue=0,
     lastHitReason="none", errors={}, firedCount=0, voidRescues=0,
-    roleRefreshes=0, hitAttempts=0, hitSuccess=0, lastHitType="none"}
+    roleRefreshes=0, hitAttempts=0, hitSuccess=0, lastHitType="none", retries=0, wallSkips=0}
 local HB_DBG = HB_G.DEBUG
 
 local HB_SERIAL = tostring(random(10000000, 99999999))
@@ -139,36 +116,36 @@ Palette = {
     Base=c3(10,10,12), Surface=c3(18,18,22), Elevated=c3(26,26,32),
     Elevated2=c3(34,34,42), Border=c3(40,40,50),
     TextHigh=c3(245,245,250), TextMid=c3(160,160,175), TextLow=c3(100,100,115),
-    Accent=c3(220,40,40), Success=c3(0,210,120), Warning=c3(255,180,0), Danger=c3(255,60,60),
+    Accent=c3(140,0,0), Success=c3(0,210,120), Warning=c3(255,180,0), Danger=c3(255,60,60),
 }
 Themes = {Red=c3(220,40,40), Blue=c3(50,130,255), Green=c3(30,200,90),
     Purple=c3(170,60,230), Cyan=c3(30,210,220), Neon=c3(0,255,180),
     Matrix=c3(0,230,70), Blood=c3(140,0,0)}
 
 S = S or {}
-S.AutoFlick=true S.FlickKey=Enum.KeyCode.Q S.SilentOn=true S.AIOn=true
-S.PullSlot1=true S.AlignTol=1 S.Retries=0 S.AimSmooth=0
-S.TrigOn=false S.TrigRad=60 S.TrigCD=0.35
+S.AutoFlick=true S.FlickKey=Enum.KeyCode.Q S.SilentOn=true S.AIOn=false
+S.PullSlot1=true S.AlignTol=0 S.Retries=1 S.AimSmooth=0
+S.TrigOn=false S.TrigRad=300 S.TrigCD=0.01
 S.ESP=true S.ESPName=true S.ESP_LOD=true S.Chams=true
-S.ESPArrows=false S.ESPSkeleton=false S.Radar=true S.TimelinePredictor=true
-S.Hitmark=true S.KillFeed=true S.Cross=false S.CrossStyle="Sharingan" S.CrossSize=24 S.CrossFollowMouse=true
-S.ESPThick=2 S.AutoSave=true S.Theme="Red" S.Humanize=true
-S.RateLimit=false S.RandomAim=true S.FakeMiss=false S.ChatCommands=true
+S.ESPArrows=true S.ESPSkeleton=true S.Radar=true S.TimelinePredictor=true
+S.Hitmark=true S.KillFeed=true S.Cross=false S.CrossStyle="Sharingan" S.CrossSize=32 S.CrossFollowMouse=true
+S.ESPThick=5 S.AutoSave=true S.Theme="Blood" S.Humanize=false
+S.RateLimit=false S.RandomAim=false S.FakeMiss=false S.ChatCommands=true
 S.Kills=0 S.Deaths=0 S.Hits=0 S.Misses=0 S.Streak=0 S.BestStreak=0
 S.SessionStart=tick()
-S.FPSAdaptive=true S.FPSAdaptiveMinFPS=45 S.HitscanOpt=true
-S.WeaponCooldownCheck=true S.AntiFlickBlock=false S.AntiFlickBackoff=2
-S.PostKillDelay=false S.PostKillDelayMs=400 S.ThreatTrajectory=false
+S.FPSAdaptive=false S.FPSAdaptiveMinFPS=10 S.HitscanOpt=false
+S.WeaponCooldownCheck=false S.AntiFlickBlock=false S.AntiFlickBackoff=0
+S.PostKillDelay=false S.PostKillDelayMs=0 S.ThreatTrajectory=true
 S.SmartTarget=true S.NNRate=0.01 S.PreAim=true S.StickyAim=true
 S.StickyAimStrength=1.0 S.ProgressiveFlick=true S.RSIEnabled=true
-S.RetryMiss=false
-S.WallCheck=false S.FlickMaxDist=5000 S.CycleEnabled=false S.MaxCycles=1
-S.CycleReturnMs=50 S.FlickCameraMode="Off"
+S.RetryMiss=true
+S.WallCheck=true S.FlickMaxDist=9999 S.CycleEnabled=true S.MaxCycles=3
+S.CycleReturnMs=1 S.FlickCameraMode="Off"
 S.ReShadeOn=true S.ReShadePreset="Tryhard" S.TracerOn=true S.KillFXOn=true
-S.AntiVoid=true S.AntiVoidYThresh=-50 S.AntiVoidLift=8
-S.MovingTargetPredict=true S.KalmanPredictV2=true S.KalmanPredTime=0.15
-S.JukeCounter=true S.VelocityMatch=false S.BackstabSnap=true
-S.VerticalPriority=false S.ClosestToCrosshair=false
+S.AntiVoid=true S.AntiVoidYThresh=-5 S.AntiVoidLift=20
+S.MovingTargetPredict=true S.KalmanPredictV2=true S.KalmanPredTime=0.01
+S.JukeCounter=true S.VelocityMatch=true S.BackstabSnap=true
+S.VerticalPriority=true S.ClosestToCrosshair=true
 S.HeadOnlyLock=true S.NeckShot=false
 S.Sub1msSnap=true S.DynamicSnapSpeed=true S.AdaptiveSnapDist=true
 S.ProgressiveReturn=true S.ZeroReturnTeleport=true S.MultiSnapSteps=true
@@ -177,14 +154,14 @@ S.HoldToFlick=false S.TapToFlick=false S.TapMaxTime=0.15
 S.ShowCooldownVisual=false
 S.Adv_BezierSnap=false S.Adv_BezierP1=0.25 S.Adv_BezierP2=0.75
 S.Adv_SplineFlick=false S.Adv_BallisticArc=false
-S.Adv_MicroJitterRet=false S.Adv_MicroJitterAmt=0.5
+S.Adv_MicroJitterRet=false S.Adv_MicroJitterAmt=0
 S.Adv_TrailingKill=false S.Adv_FocusZoom=false
 S.Adv_PrioritySwitch=true S.Adv_PerfectReturn=true
-S.Adv_CancelWindow=false S.Adv_CancelMs=3 S.Adv_AdaptiveCurve=false
+S.Adv_CancelWindow=false S.Adv_CancelMs=1 S.Adv_AdaptiveCurve=false
 S.MM2_KnifeAutoFlick=true S.MM2_GunAutoFlick=true S.MM2_RoundStartFlick=true
 S.MM2_AfterKillReset=true S.MM2_SheriffProtect=false S.MM2_DeathFlick=true
 S.ESPBox=true S.ESPDist=true S.ESPTracer=true S.ESPHealth=true
-S.ESPWeapon=false S.ESPFill=false S.ESPFillTransparency=0.8
+S.ESPWeapon=true S.ESPFill=true S.ESPFillTransparency=0.7
 S.ESPShowSheriff=true S.ESPShowInnocents=true
 S.FB_FlickTrail=true S.FB_TargetMarker=true S.FB_ImpactFlash=true
 S.FB_SnapSound=true S.FB_KillConfirmSound=true S.FB_FlickCounter=true
@@ -196,17 +173,15 @@ S.BombJump=false S.BombJumpKey=Enum.KeyCode.B
 S.BombJumpDelay=0.45 S.BombJumpPractice=false S.BombJumpCooldown=0.5
 S.WallHop=false S.WallHopKey=Enum.KeyCode.V
 S.WallHopPower=55 S.WallHopCooldown=0.35 S.WallHopAutoDetect=true
--- [ULTRA PRECISION]
 S.OneShotPerfect = true
 S.OneShotLead    = true
 S.OneShotGravity = true
 S.OneShotAdaptive = true
-S.OneShotIterations = 4
+S.OneShotIterations = 12
 S.OneShotConverge = true
--- [SCREEN STRETCH]
-S.ScreenStretch = false
-S.ScreenStretchPreset = "Normal"
-S.ScreenStretchFOV = 70
+S.ScreenStretch = true
+S.ScreenStretchPreset = "21:9 Wide"
+S.ScreenStretchFOV = 95
 
 S.REV_AI = {meta=false,nas=false,cloning=false,selfPlay=false,worldModel=false,
     activeInf=false,transformer=false,moe=false,uncert=false,causal=false,
@@ -256,9 +231,6 @@ NNReal = {inputN=8, hiddenN=6, outputN=3, W1={}, b1={}, W2={}, b2={}, lr=0.01, t
 OneShotMem = setmetatable({}, {__mode = "k"})
 PingTracker = {samples={}, smoothed=0, lastSample=0, maxSamples=8}
 
--- ============================================================
--- [SCREEN STRETCH]
--- ============================================================
 HB_ScreenPresets = {
     ["Normal"]         = 70,
     ["4:3 Stretch"]    = 52,
@@ -284,8 +256,8 @@ function HB_ResetScreenStretch()
 end
 function HB_GetScreenPresetFOV()
     local preset = S.ScreenStretchPreset or "Normal"
-    if preset == "Custom" then return S.ScreenStretchFOV or 70 end
-    return HB_ScreenPresets[preset] or 70
+    if preset == "Custom" then return S.ScreenStretchFOV or 95 end
+    return HB_ScreenPresets[preset] or 95
 end
 HB_CONNS[#HB_CONNS+1] = RS_Heartbeat:Connect(function()
     if not S.ScreenStretch then return end
@@ -295,7 +267,6 @@ HB_CONNS[#HB_CONNS+1] = RS_Heartbeat:Connect(function()
     end
 end)
 
--- [PRECISION PING SMOOTHER]
 function HB_GetSmoothedPing()
     local now = tick()
     if now - PingTracker.lastSample > 0.5 then
@@ -788,14 +759,17 @@ function SilentFire(tool, aimPos, bypassCooldown)
     local hum = lpCh:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return false end
     local head = lpCh:FindFirstChild("Head")
+    local hrp  = lpCh:FindFirstChild("HumanoidRootPart")
     local handle = tool:FindFirstChild("Handle")
     local fireFromPos = (handle and handle.Position) or (head and head.Position) or Camera.CFrame.Position
     local oldAuto = hum.AutoRotate
     local oldHeadCF = head and head.CFrame
+    local oldHrpCF  = hrp and hrp.CFrame
     local oldHandleCF = handle and handle.CFrame
     hum.AutoRotate = false
+    if hrp    then pcall(function() hrp.CFrame    = lookAt(hrp.Position,    aimPos) end) end
     if handle then pcall(function() handle.CFrame = lookAt(handle.CFrame.Position, aimPos) end) end
-    if head then pcall(function() head.CFrame = lookAt(head.CFrame.Position, aimPos) end) end
+    if head   then pcall(function() head.CFrame   = lookAt(head.CFrame.Position,   aimPos) end) end
     local fakePart
     if Mouse then
         pcall(function()
@@ -809,6 +783,7 @@ function SilentFire(tool, aimPos, bypassCooldown)
     local ok = pcall(function() tool:Activate() end)
     if handle and oldHandleCF then handle.CFrame = oldHandleCF end
     if head and oldHeadCF then pcall(function() head.CFrame = oldHeadCF end) end
+    if hrp  and oldHrpCF  then pcall(function() hrp.CFrame  = oldHrpCF  end) end
     hum.AutoRotate = oldAuto
     if fireFromPos and HB_Tracer.enabled then
         if (not IsHitscan(tool)) or HB_Tracer.ignoreHitscan then
@@ -829,9 +804,6 @@ function SilentFire(tool, aimPos, bypassCooldown)
     return ok
 end
 
--- ============================================================
--- [ULTRA PRECISION AIM ENGINE — 4 PASS ITERATIVE]
--- ============================================================
 function HB_CalcLeadPosIterative(tp, ch, camPos, tool)
     if not ch or not ch.Parent then return nil end
     local head = ch:FindFirstChild("Head")
@@ -844,15 +816,27 @@ function HB_CalcLeadPosIterative(tp, ch, camPos, tool)
     local ping = HB_GetSmoothedPing()
     local basePos = head.Position
     local finalPos = basePos
-    for iter = 1, 3 do
+    local iterations = S.OneShotIterations or 12
+    local frameTime = 1 / math.max(FPS.cur or 60, 30)
+    local hitscan = IsHitscan(tool)
+    for iter = 1, iterations do
         local dist = (finalPos - camPos).Magnitude
-        local t = (dist / spd) + (ping * 0.5) + 0.0333
+        local travel = hitscan and 0 or (dist / spd)
+        local t = travel + (ping * 0.5) + frameTime
         local targetPoint = basePos + vel * t
         if S.OneShotLead and acc.Magnitude > 0.1 then
             targetPoint = targetPoint + acc * (0.5 * t * t)
         end
-        if S.OneShotGravity and not IsHitscan(tool) then
+        if S.OneShotGravity and not hitscan then
             targetPoint = newV3(targetPoint.X, targetPoint.Y + 0.5 * 196.2 * t * t, targetPoint.Z)
+        end
+        if h and h.dirChanges > 3 and h.lastDirChangeT and (tick() - h.lastDirChangeT) < 0.4 then
+            targetPoint = targetPoint + h.vel * 0.012
+        end
+        if h and h.isCrouch and S.HeadOnlyLock then
+            targetPoint = newV3(targetPoint.X, targetPoint.Y - 0.35, targetPoint.Z)
+        elseif h and h.isJumping and S.HeadOnlyLock then
+            targetPoint = newV3(targetPoint.X, targetPoint.Y + 0.25, targetPoint.Z)
         end
         if S.OneShotAdaptive then
             local mem = OneShotMem[tp]
@@ -862,10 +846,13 @@ function HB_CalcLeadPosIterative(tp, ch, camPos, tool)
                 targetPoint = targetPoint + mem.offset * decay
             end
         end
+        if S.OneShotConverge and (targetPoint - finalPos).Magnitude < 0.005 then
+            finalPos = targetPoint; break
+        end
         finalPos = targetPoint
     end
     local finalDist = (finalPos - camPos).Magnitude
-    local finalT = (finalDist / spd) + (ping * 0.5) + 0.0333
+    local finalT = (hitscan and 0 or (finalDist / spd)) + (ping * 0.5) + frameTime
     return finalPos, finalT, finalDist
 end
 
@@ -906,30 +893,79 @@ function HB_MultiPointAim(ch, camPos, basePoint)
     return basePoint, false, nil
 end
 
+function HB_HasLOSFromTo(fromPos, toPos, targetChar)
+    if not fromPos or not toPos then return false end
+    local ignore = {LP.Character}
+    if targetChar then ignore[#ignore+1] = targetChar end
+    local params = RaycastParams.new()
+    params.FilterType = E_RFT_EXCLUDE
+    params.FilterDescendantsInstances = ignore
+    params.IgnoreWater = true
+    params.RespectCanCollide = false
+    return workspace:Raycast(fromPos, toPos - fromPos, params) == nil
+end
+
+function HB_FindAimWithLOS(ch, fromPos, baseAim)
+    if not ch or not ch.Parent then return baseAim, false end
+    if HB_HasLOSFromTo(fromPos, baseAim, ch) then return baseAim, true end
+    local offsets = {
+        Vector3.new(0.4, 0, 0),   Vector3.new(-0.4, 0, 0),
+        Vector3.new(0, 0.4, 0),   Vector3.new(0, -0.4, 0),
+        Vector3.new(0, 0, 0.4),   Vector3.new(0, 0, -0.4),
+        Vector3.new(0.8, 0, 0),   Vector3.new(-0.8, 0, 0),
+        Vector3.new(0, 0.8, 0),   Vector3.new(0, -0.8, 0),
+        Vector3.new(0.4, 0.4, 0), Vector3.new(-0.4, 0.4, 0),
+        Vector3.new(0.4, -0.4, 0),Vector3.new(-0.4, -0.4, 0),
+        Vector3.new(0, 0, 0.8),   Vector3.new(0, 0, -0.8),
+        Vector3.new(1.2, 0, 0),   Vector3.new(-1.2, 0, 0),
+        Vector3.new(0, 1.2, 0),   Vector3.new(0, -1.2, 0),
+        Vector3.new(1.2, 0.6, 0), Vector3.new(-1.2, 0.6, 0),
+    }
+    for i = 1, #offsets do
+        local testAim = baseAim + offsets[i]
+        if HB_HasLOSFromTo(fromPos, testAim, ch) then return testAim, true end
+    end
+    return baseAim, false
+end
+
 function HB_PerfectAim(tp, ch, camPos, tool, hum)
     if not ch or not ch.Parent or not hum or hum.Health <= 0 then return nil end
     local head = ch:FindFirstChild("Head")
     local hrp  = ch:FindFirstChild("HumanoidRootPart")
+    local upperTorso = ch:FindFirstChild("UpperTorso") or ch:FindFirstChild("Torso")
     if not head then return nil end
     local leadAim, t, dist = HB_CalcLeadPosIterative(tp, ch, camPos, tool)
     if not leadAim then return nil end
-    local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, camPos, leadAim)
-    if hasLOS and hitPart and hitPart.Name == "Head" then
-        return hitPos, t, dist, "head"
+    local fireOrigin = camPos
+    local lpHead = Cache.Heads[LP]
+    if lpHead then fireOrigin = lpHead.Position end
+    local samples = {}
+    tinsert(samples, leadAim)
+    tinsert(samples, head.Position)
+    local headOffsets = {
+        Vector3.new(0.3, 0, 0),   Vector3.new(-0.3, 0, 0),
+        Vector3.new(0, 0.3, 0),   Vector3.new(0, -0.3, 0),
+        Vector3.new(0.3, 0.3, 0), Vector3.new(-0.3, 0.3, 0),
+        Vector3.new(0.3, -0.3, 0),Vector3.new(-0.3, -0.3, 0),
+        Vector3.new(0.6, 0, 0),   Vector3.new(-0.6, 0, 0),
+        Vector3.new(0, 0.6, 0),   Vector3.new(0, -0.6, 0),
+        Vector3.new(0, 0, 0.3),   Vector3.new(0, 0, -0.3),
+    }
+    for i = 1, #headOffsets do tinsert(samples, leadAim + headOffsets[i]) end
+    if head then tinsert(samples, head.Position + Vector3.new(0, -0.6, 0)) end
+    if upperTorso then
+        tinsert(samples, upperTorso.Position)
+        tinsert(samples, upperTorso.Position + Vector3.new(0, 0.5, 0))
     end
-    if S.HeadOnlyLock then
-        local headAim = head.Position + (leadAim - head.Position) * 0.5
-        return headAim, t, dist, "head_blind"
+    if hrp then tinsert(samples, hrp.Position) end
+    for i = 1, #samples do
+        local sample = samples[i]
+        local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, fireOrigin, sample)
+        if hasLOS then
+            local partName = (hitPart and hitPart.Name) or "unknown"
+            return hitPos, t, dist, partName
+        end
     end
-    if hrp then
-        local v = (Hst[tp] and Hst[tp].vel) or hrp.AssemblyLinearVelocity or v3zero
-        local hrpLead = hrp.Position + v * (t or 0.05)
-        local hrpHit, hrpLOS = HB_VerifyLOS(ch, camPos, hrpLead)
-        if hrpLOS then return hrpHit, t, dist, "hrp" end
-    end
-    local mpAim, mpLOS = HB_MultiPointAim(ch, camPos, leadAim)
-    if mpLOS then return mpAim, t, dist, "multipoint" end
-    if hasLOS and hitPart then return hitPos, t, dist, hitPart.Name end
     return leadAim, t, dist, "blind"
 end
 
@@ -938,49 +974,60 @@ function HB_PerfectShot(tp, ch, hum, camPos, tool)
     if hum.Health <= 0 or not hum.Parent then return true end
     local head = ch:FindFirstChild("Head")
     if not head then return false end
-    local maxTries = S.OneShotPerfect and 4 or 1
-    local lastAim, lastHitType, lastMissOffset
-    for try = 1, maxTries do
-        local aim, t, dist, hitType = HB_PerfectAim(tp, ch, camPos, tool, hum)
-        if not aim then
-            aim = head.Position
-            t = 0
-            hitType = "fallback"
+    local aim, t, dist, hitType = HB_PerfectAim(tp, ch, camPos, tool, hum)
+    if not aim then aim = head.Position; hitType = "fallback" end
+    local lpHead = Cache.Heads[LP]
+    local fireOrigin = lpHead and lpHead.Position or camPos
+    if S.WallCheck then
+        local losAim, hasLOS = HB_FindAimWithLOS(ch, fireOrigin, aim)
+        if hasLOS then aim = losAim else
+            HB_DBG.wallSkips = (HB_DBG.wallSkips or 0) + 1
+            return false
         end
-        local jitter = 0
-        if try == 2 then jitter = 0.08
-        elseif try == 3 then jitter = 0.20
-        elseif try >= 4 then jitter = 0.35 end
-        if jitter > 0 then
-            aim = aim + newV3((random()-0.5)*jitter, (random()-0.5)*jitter, (random()-0.5)*jitter)
-            local losPos, los = HB_VerifyLOS(ch, camPos, aim)
-            if los then aim = losPos end
-        end
-        lastAim = aim; lastHitType = hitType
-        local hpBefore = hum.Health
-        HB_DBG.hitAttempts = (HB_DBG.hitAttempts or 0) + 1
-        HB_DBG.lastHitType = hitType or "none"
-        pcall(function() SilentFire(tool, aim, true) end)
-        RS_Heartbeat:Wait()
-        if not hum.Parent then
-            HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
-            OneShotMem[tp] = nil; return true
-        end
-        if hum.Health < hpBefore then
-            HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
-            OneShotMem[tp] = nil; return true
-        end
-        RS_Heartbeat:Wait()
-        if not hum.Parent then
-            HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
-            OneShotMem[tp] = nil; return true
-        end
-        if hum.Health < hpBefore then
-            HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
-            OneShotMem[tp] = nil; return true
-        end
-        lastMissOffset = head.Position - aim
     end
+    local hpBefore = hum.Health
+    HB_DBG.hitAttempts = (HB_DBG.hitAttempts or 0) + 1
+    HB_DBG.lastHitType = hitType or "none"
+    local fired = false
+    for equipTry = 1, 5 do
+        local ok = SilentFire(tool, aim, true)
+        if ok then fired = true; break end
+        task.wait(0.02)
+    end
+    if not fired then return false end
+    local verifyStart = tick()
+    while tick() - verifyStart < 0.15 do
+        RS_Heartbeat:Wait()
+        if not hum.Parent or hum.Health < hpBefore then
+            HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
+            OneShotMem[tp] = nil
+            return true
+        end
+    end
+    if S.RetryMiss and head.Parent and hum.Health > 0 then
+        HB_DBG.retries = (HB_DBG.retries or 0) + 1
+        local retryAim, _, _, _ = HB_PerfectAim(tp, ch, camPos, tool, hum)
+        if retryAim and S.WallCheck then
+            local rAim, rLOS = HB_FindAimWithLOS(ch, fireOrigin, retryAim)
+            retryAim = rLOS and rAim or nil
+        end
+        if retryAim then
+            RS_Heartbeat:Wait()
+            local retryOK = SilentFire(tool, retryAim, true)
+            if retryOK then
+                local retryVerify = tick()
+                while tick() - retryVerify < 0.10 do
+                    RS_Heartbeat:Wait()
+                    if not hum.Parent or hum.Health < hpBefore then
+                        HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
+                        OneShotMem[tp] = nil
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    local lastMissOffset = head.Position - aim
     if S.OneShotAdaptive and lastMissOffset then
         local prev = OneShotMem[tp]
         if prev and prev.offset then
@@ -994,12 +1041,9 @@ function HB_PerfectShot(tp, ch, hum, camPos, tool)
     return false
 end
 
--- ============================================================
--- IA HELPERS (restaurados completos)
--- ============================================================
 function MetaLearnUpdate(perf)
     if not S.REV_AI.meta then return end
-    local snap = (Flick and Flick.snapDur) or 0.045
+    local snap = (Flick and Flick.snapDur) or 0.001
     local hist = RevAI.metaHistory
     hist[#hist+1] = {perf=perf, snap=snap, t=tick()}
     if #hist > 100 then tremove(hist, 1) end
@@ -1352,19 +1396,19 @@ end
 
 Flick = {
     active=false, phase="idle", snapStartTick=0, flickStartTick=0,
-    snapDur=0.014, holdDur=0.030, returnDur=0.035, verifyWait=0.150,
+    snapDur=0.001, holdDur=0.001, returnDur=0.001, verifyWait=0.15,
     targetPlayer=nil, targetChar=nil, targetHumanoid=nil, aimPos=nil,
     originCF=nil, originLookAt=nil, originalCameraType=nil, originalCameraSubject=nil,
     originalFOV=nil,
     shotsFired=0, killed=false, hitVerified=false, hpBefore=100, verifyStart=0,
     retriesLeft=0, lastFlickEnd=0, triggeredBy="manual", keyHeld=false,
     returnStartTick=0, returnStartCF=nil, returnTargetCF=nil, holdStartTick=0,
-    proMode=false, overshootPct=0.010, microJitter=0, microJitterRate=10,
-    preDipEnabled=false, preDipDur=0.020, preDipAmount=0.012, fireAtPeak=true,
+    proMode=false, overshootPct=0, microJitter=0, microJitterRate=10,
+    preDipEnabled=false, preDipDur=0, preDipAmount=0, fireAtPeak=true,
     dipPos=nil, dipStartTick=0, jitterPhase=0, peakFired=false,
     oneShot=true, reactionDelay=0, reactionStartTick=0,
-    adaptiveOvershoot=false, recoilEnabled=false, recoilAmount=0.020,
-    recoilTime=0.055, recoilStartTick=0, recoilPhase="none", postShotSettle=0,
+    adaptiveOvershoot=false, recoilEnabled=false, recoilAmount=0,
+    recoilTime=0, recoilStartTick=0, recoilPhase="none", postShotSettle=0,
     peakFireDelay=0, currentDist=0, fired=false, bulletFired=false,
 }
 TriggerSuppressUntil = 0
@@ -1403,7 +1447,7 @@ function FindMurderQueue()
     local lpHrp = Cache.HRPs[LP]
     if lpHrp then origin = lpHrp.Position else origin = Camera.CFrame.Position end
     local wallCheck = S.WallCheck ~= false
-    local maxDist = S.FlickMaxDist or 5000
+    local maxDist = S.FlickMaxDist or 9999
     local cands = {}
     local m, s, i_count = 0, 0, 0
     for i = 1, #Cache.List do
@@ -1506,7 +1550,7 @@ HB_CONNS[#HB_CONNS+1] = RS_Render:Connect(function(dt)
     if F.phase == "return" and F.active then
         if not F.returnStartCF or not F.returnTargetCF then HB_ForceRestoreCamera(); return end
         local el = tick() - (F.returnStartTick or tick())
-        local dur = F.returnDur or 0.035
+        local dur = F.returnDur or 0.001
         if dur <= 0.001 then HB_ForceRestoreCamera(); return end
         local t = clamp(el / dur, 0, 1)
         local eased = HB_EaseBezier(t, 0.4, 0.6)
@@ -1595,6 +1639,10 @@ HB_CONNS[#HB_CONNS+1] = RS_Render:Connect(function(dt)
         end
     end
 end)
+--==============================================================
+-- BLOCO 2 — VISUALS · UI · ESP · HUD · BOOT
+-- Cole logo após o Bloco 1
+--==============================================================
 
 HB_Visuals = {enabled=true, preset="Tryhard", saturation=0.22, contrast=0.18,
     brightness=0.02, tintColor=c3(255, 245, 235),
@@ -1652,11 +1700,11 @@ HB_CONNS[#HB_CONNS+1] = RS_Heartbeat:Connect(function(dt)
     local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
     if not myHRP or not myHum or myHum.Health <= 0 then return end
     local y = myHRP.Position.Y
-    local thresh = S.AntiVoidYThresh or -50
+    local thresh = S.AntiVoidYThresh or -5
     if y > (thresh + 20) then LastSafeCF = myHRP.CFrame
     elseif y < thresh and LastSafeCF then
         pcall(function()
-            myHRP.CFrame = newCF(LastSafeCF.Position + newV3(0, S.AntiVoidLift or 8, 0))
+            myHRP.CFrame = newCF(LastSafeCF.Position + newV3(0, S.AntiVoidLift or 20, 0))
             myHRP.AssemblyLinearVelocity = v3zero
             myHRP.AssemblyAngularVelocity = v3zero
             myHum:ChangeState(E_HS_GETTING)
@@ -1848,12 +1896,7 @@ function TimelineGetDot()
     return dot
 end
 
-print("[HELLBORN] BLOCO 1/2 OK — ULTRA PRECISION + IA COMPLETA")
---==============================================================
--- HELLBORN v10.0 CHROME-MERGED — BLOCO 2/2
--- UI Chrome + Todas as sub-abas + ESP + HUD + Presets + Boot
--- ULTRA PRECISION · SHARINGAN · SCREEN STRETCH (em VISUAL)
---==============================================================
+print("[HELLBORN] CORE OK — HACK MODE · WALL ON · CROSS OFF · ESP FULL · 1MS · 12 ITER · 1 TIRO")
 
 UIS_InputBegan:Connect(function(input, gp)
     if gp then return end
@@ -1880,11 +1923,11 @@ UIS_InputBegan:Connect(function(input, gp)
             HB_ForceRestoreCamera(); HB_Toast("PANIC", "danger")
         elseif kc == Enum.KeyCode.F6 then
             HB_ForceRestoreCamera(); HB_Toast("Câmera OK", "success")
-        elseif kc == Enum.KeyCode.F4 then HB_PresetTryhard()
-        elseif kc == Enum.KeyCode.F5 then HB_PresetRageMax()
-        elseif kc == Enum.KeyCode.F7 then HB_ApplyPreset("PRO_CLIP")
-        elseif kc == Enum.KeyCode.F8 then HB_ApplyPreset("RAGE_PRO")
-        elseif kc == Enum.KeyCode.F9 then HB_ApplyPreset("RAGE_TRYHARD") end
+        elseif kc == Enum.KeyCode.F4 then HB_ApplyUltra()
+        elseif kc == Enum.KeyCode.F5 then HB_ApplyUltra()
+        elseif kc == Enum.KeyCode.F7 then HB_ApplyUltra()
+        elseif kc == Enum.KeyCode.F8 then HB_ApplyUltra()
+        elseif kc == Enum.KeyCode.F9 then HB_ApplyUltra() end
     end
 end)
 UIS_InputEnded:Connect(function(input)
@@ -1905,12 +1948,14 @@ LP.Chatted:Connect(function(msg)
     if cmd == "flick" then S.AutoFlick = (arg ~= "off")
     elseif cmd == "esp" then S.ESP = (arg ~= "off")
     elseif cmd == "trigger" then S.TrigOn = (arg ~= "off")
+    elseif cmd == "ultra" then HB_ApplyUltra(); HB_Toast("HACK MODE aplicado","danger")
     elseif cmd == "slot1" then S.PullSlot1 = (arg ~= "off"); HB_Toast("Slot1 "..tostring(S.PullSlot1),"success")
     elseif cmd == "oneshot" then S.OneShotPerfect = (arg ~= "off"); HB_Toast("OneShot "..tostring(S.OneShotPerfect),"success")
     elseif cmd == "lead" then S.OneShotLead = (arg ~= "off"); HB_Toast("Lead "..tostring(S.OneShotLead),"success")
     elseif cmd == "grav" then S.OneShotGravity = (arg ~= "off"); HB_Toast("Grav "..tostring(S.OneShotGravity),"success")
     elseif cmd == "adapt" then S.OneShotAdaptive = (arg ~= "off"); HB_Toast("Adapt "..tostring(S.OneShotAdaptive),"success")
     elseif cmd == "cross" then S.Cross = (arg ~= "off"); if HB_BuildCrosshair then HB_BuildCrosshair() end; HB_Toast("Cross "..tostring(S.Cross),"success")
+    elseif cmd == "wallcheck" then S.WallCheck = true; HB_Toast("WallCheck ON (travado)","success")
     elseif cmd == "stretch" then
         S.ScreenStretch = (arg ~= "off"); HB_ApplyScreenStretch()
         HB_Toast("Stretch "..tostring(S.ScreenStretch),"success")
@@ -1958,13 +2003,13 @@ UI_header = HB_Create("Frame", {
 HB_Corner(UI_header, 12)
 HB_Create("TextLabel", {
     Size=newUD2(0,420,0,20), Position=newUD2(0,16,0,8),
-    BackgroundTransparency=1, Text="⚡ HELLBORN v10.0 · ULTRA PRECISION",
+    BackgroundTransparency=1, Text="💀 HELLBORN v10.1 · HACK MODE",
     Font=E_GOTHAM_BLACK, TextSize=16, TextColor3=Palette.TextHigh,
     TextXAlignment=E_TXT_LEFT, ZIndex=12
 }, UI_header)
 HB_Create("TextLabel", {
     Size=newUD2(0,420,0,12), Position=newUD2(0,16,0,30),
-    BackgroundTransparency=1, Text="4-PASS AIM · ONE SHOT · SHARINGAN · "..HB_SERIAL,
+    BackgroundTransparency=1, Text="1MS · 12 ITER · 1 TIRO · WALL ON · HRP ROTATION · FOV 95 · "..HB_SERIAL,
     Font=E_CODE, TextSize=9, TextColor3=Palette.Accent,
     TextXAlignment=E_TXT_LEFT, ZIndex=12
 }, UI_header)
@@ -2362,125 +2407,124 @@ end
 
 local P = UI.TabContents
 
--- ================== AIM ==================
 do local p = P["AIM/Core"]
-    Cmp.Section(p, "🎯 ULTRA PRECISION AIMBOT")
+    Cmp.Section(p, "🎯 HACK MODE · 12 ITER · 1 TIRO · 1MS")
     Cmp.Toggle(p, {text="Auto Flick", default=true, callback=function(v) S.AutoFlick=v end})
     Cmp.Toggle(p, {text="Pull Slot 1", default=true, desc="Sempre puxa a arma da hotbar 1 antes de atirar", callback=function(v) S.PullSlot1=v end})
     Cmp.Keybind(p, {text="Flick Key", default=S.FlickKey, callback=function(kc) S.FlickKey=kc end})
-    Cmp.Slider(p, {text="Align Tolerance", min=1, max=15, default=1, suffix="°", callback=function(v) S.AlignTol=v end})
+    Cmp.Slider(p, {text="Align Tolerance", min=0, max=15, default=0, suffix="°", callback=function(v) S.AlignTol=v end})
     Cmp.Slider(p, {text="Aim Smooth", min=0, max=100, default=0, suffix="%", callback=function(v) S.AimSmooth=v/100 end})
-    Cmp.Section(p, "🎯 SILENT")
+    Cmp.Section(p, "🎯 SILENT (HACK)")
     Cmp.Toggle(p, {text="Silent Aim", default=true, callback=function(v) S.SilentOn=v end})
-    Cmp.Toggle(p, {text="Random Aim", default=true, callback=function(v) S.RandomAim=v end})
-    Cmp.Toggle(p, {text="Humanize", default=true, callback=function(v) S.Humanize=v end})
+    Cmp.Toggle(p, {text="Random Aim", default=false, callback=function(v) S.RandomAim=v end})
+    Cmp.Toggle(p, {text="Humanize", default=false, callback=function(v) S.Humanize=v end})
 end
 do local p = P["AIM/Targeting"]
-    Cmp.Section(p, "🎯 ALVO")
+    Cmp.Section(p, "🎯 ALVO (HACK MODE)")
     Cmp.Dropdown(p, {text="Prioridade", options={"murderer","closest","lowest_hp","most_dangerous"}, default="murderer", callback=function(o) S.RagePriority=o end})
     Cmp.Dropdown(p, {text="Parte", options={"Head","Torso","HumanoidRootPart","Neck"}, default="Head", callback=function(o) S.AimPart=o end})
     Cmp.Toggle(p, {text="Smart Target", default=true, callback=function(v) S.SmartTarget=v end})
     Cmp.Toggle(p, {text="Pre-Aim", default=true, callback=function(v) S.PreAim=v end})
     Cmp.Toggle(p, {text="Sticky Aim", default=true, callback=function(v) S.StickyAim=v end})
     Cmp.Slider(p, {text="Sticky Strength", min=0, max=100, default=100, suffix="%", callback=function(v) S.StickyAimStrength=v/100 end})
-    Cmp.Toggle(p, {text="Threat Trajectory", default=false, callback=function(v) S.ThreatTrajectory=v end})
+    Cmp.Toggle(p, {text="Threat Trajectory", default=true, callback=function(v) S.ThreatTrajectory=v end})
     Cmp.Toggle(p, {text="Head Only Lock", default=true, callback=function(v) S.HeadOnlyLock=v end})
-    Cmp.Toggle(p, {text="HRP Fallback", default=false, callback=function(v) S.HRPFallback=v end})
+    Cmp.Toggle(p, {text="HRP Fallback", default=true, callback=function(v) S.HRPFallback=v end})
     Cmp.Toggle(p, {text="Neck Shot", default=false, callback=function(v) S.NeckShot=v end})
     Cmp.Toggle(p, {text="Backstab Snap", default=true, callback=function(v) S.BackstabSnap=v end})
-    Cmp.Toggle(p, {text="Vertical Priority", default=false, callback=function(v) S.VerticalPriority=v end})
-    Cmp.Toggle(p, {text="Closest to Crosshair", default=false, callback=function(v) S.ClosestToCrosshair=v end})
+    Cmp.Toggle(p, {text="Vertical Priority", default=true, callback=function(v) S.VerticalPriority=v end})
+    Cmp.Toggle(p, {text="Closest to Crosshair", default=true, callback=function(v) S.ClosestToCrosshair=v end})
 end
 do local p = P["AIM/Prediction"]
-    Cmp.Section(p, "👁 PREDIÇÃO ULTRA (4-pass)")
+    Cmp.Section(p, "👁 PREDIÇÃO (12-pass + FPS-aware)")
     Cmp.Toggle(p, {text="Ping Compensate", default=true, callback=function(v) S.PingCompensate=v end})
     Cmp.Toggle(p, {text="Latency Prediction", default=true, callback=function(v) S.LatencyPrediction=v end})
     Cmp.Toggle(p, {text="History Tracker", default=true, callback=function(v) S.HistoryTracker=v end})
-    Cmp.Slider(p, {text="History Frames", min=10, max=60, default=30, callback=function(v) S.HistoryFrames=v end})
+    Cmp.Slider(p, {text="History Frames", min=10, max=60, default=60, callback=function(v) S.HistoryFrames=v end})
     Cmp.Toggle(p, {text="Moving Target Predict", default=true, callback=function(v) S.MovingTargetPredict=v end})
     Cmp.Toggle(p, {text="Kalman Predict V2", default=true, callback=function(v) S.KalmanPredictV2=v end})
-    Cmp.Slider(p, {text="Kalman Tempo", min=1, max=100, default=15, suffix=" ×10ms", callback=function(v) S.KalmanPredTime=v/100 end})
+    Cmp.Slider(p, {text="Kalman Tempo", min=1, max=100, default=1, suffix=" ×10ms", callback=function(v) S.KalmanPredTime=v/100 end})
     Cmp.Toggle(p, {text="Juke Counter", default=true, callback=function(v) S.JukeCounter=v end})
-    Cmp.Toggle(p, {text="Velocity Match", default=false, callback=function(v) S.VelocityMatch=v end})
+    Cmp.Toggle(p, {text="Velocity Match", default=true, callback=function(v) S.VelocityMatch=v end})
     Cmp.Toggle(p, {text="Strafe Detector", default=true, callback=function(v) S.StrafeDetector=v end})
     Cmp.Toggle(p, {text="Jump Predictor", default=true, callback=function(v) S.JumpPredictor=v end})
     Cmp.Toggle(p, {text="Crouch Detector", default=true, callback=function(v) S.CrouchDetector=v end})
-    Cmp.Toggle(p, {text="First-Visual Lock", default=false, callback=function(v) S.FirstVisualLock=v end})
+    Cmp.Toggle(p, {text="First-Visual Lock", default=true, callback=function(v) S.FirstVisualLock=v end})
 end
 do local p = P["AIM/TriggerBot"]
-    Cmp.Section(p, "⚡ TRIGGER BOT")
+    Cmp.Section(p, "⚡ TRIGGER BOT (OFF por padrão)")
     Cmp.Toggle(p, {text="Trigger Bot", default=false, callback=function(v) S.TrigOn=v end})
-    Cmp.Slider(p, {text="Radius", min=10, max=200, default=60, suffix=" px", callback=function(v) S.TrigRad=v end})
-    Cmp.Slider(p, {text="Cooldown", min=1, max=100, default=35, suffix=" ×10ms", callback=function(v) S.TrigCD=v/100 end})
+    Cmp.Slider(p, {text="Radius", min=10, max=300, default=300, suffix=" px", callback=function(v) S.TrigRad=v end})
+    Cmp.Slider(p, {text="Cooldown", min=1, max=100, default=1, suffix=" ×10ms", callback=function(v) S.TrigCD=v/100 end})
 end
 do local p = P["AIM/Anti-Detect"]
-    Cmp.Section(p, "🛡 ANTI-DETECT (RAGE: tudo OFF)")
+    Cmp.Section(p, "🛡 ANTI-DETECT (HACK: tudo OFF)")
     Cmp.Toggle(p, {text="Rate Limiter", default=false, callback=function(v) S.RateLimit=v end})
     Cmp.Toggle(p, {text="Fake Miss", default=false, callback=function(v) S.FakeMiss=v end})
     Cmp.Toggle(p, {text="Anti-Flick Block", default=false, callback=function(v) S.AntiFlickBlock=v end})
-    Cmp.Slider(p, {text="Anti-Flick Backoff", min=0, max=10, default=2, suffix=" s", callback=function(v) S.AntiFlickBackoff=v end})
+    Cmp.Slider(p, {text="Anti-Flick Backoff", min=0, max=10, default=0, suffix=" s", callback=function(v) S.AntiFlickBackoff=v end})
     Cmp.Toggle(p, {text="Post-Kill Delay", default=false, callback=function(v) S.PostKillDelay=v end})
-    Cmp.Slider(p, {text="Post-Kill Delay", min=100, max=1000, default=400, suffix=" ms", callback=function(v) S.PostKillDelayMs=v end})
+    Cmp.Slider(p, {text="Post-Kill Delay", min=0, max=1000, default=0, suffix=" ms", callback=function(v) S.PostKillDelayMs=v end})
 end
 do local p = P["AIM/Locks"]
-    Cmp.Section(p, "🔒 TRAVAS")
-    Cmp.Toggle(p, {text="Single Shot Lock", default=false, callback=function(v) S.SingleShotLock=v end})
-    Cmp.Toggle(p, {text="Single Kill Lock", default=false, callback=function(v) S.SingleKillLock=v end})
-    Cmp.Slider(p, {text="Cooldown pós-kill", min=0, max=200, default=35, suffix=" ×10ms", callback=function(v) S.KillCooldown=v/100 end})
+    Cmp.Section(p, "🔒 TRAVAS (HACK MODE)")
+    Cmp.Toggle(p, {text="Single Shot Lock", default=true, callback=function(v) S.SingleShotLock=v end})
+    Cmp.Toggle(p, {text="Single Kill Lock", default=true, callback=function(v) S.SingleKillLock=v end})
+    Cmp.Slider(p, {text="Cooldown pós-kill", min=0, max=200, default=0, suffix=" ×10ms", callback=function(v) S.KillCooldown=v/100 end})
     Cmp.Toggle(p, {text="Anti-Double Fire", default=false, callback=function(v) S.AntiDoubleFire=v end})
     Cmp.Toggle(p, {text="Anti-Chain Flick", default=false, callback=function(v) S.AntiChainFlick=v end})
     Cmp.Toggle(p, {text="Hold-to-Flick", default=false, callback=function(v) S.HoldToFlick=v end})
     Cmp.Toggle(p, {text="Tap-to-Flick", default=false, callback=function(v) S.TapToFlick=v end})
-    Cmp.Slider(p, {text="Tap Max Time", min=5, max=50, default=15, suffix=" ×10ms", callback=function(v) S.TapMaxTime=v/100 end})
+    Cmp.Slider(p, {text="Tap Max Time", min=1, max=50, default=15, suffix=" ×10ms", callback=function(v) S.TapMaxTime=v/100 end})
     Cmp.Toggle(p, {text="Cooldown Visual", default=false, callback=function(v) S.ShowCooldownVisual=v end})
 end
 
--- ================== FLICK ==================
 do local p = P["FLICK/Timings"]
-    Cmp.Section(p, "⚔ TIMINGS (RAGE)")
-    Cmp.Slider(p, {text="Snap (câmera vai)", min=10, max=100, default=14, suffix="ms", callback=function(v) Flick.snapDur=v/1000 end})
-    Cmp.Slider(p, {text="Hold", min=30, max=300, default=30, suffix="ms", callback=function(v) Flick.holdDur=v/1000 end})
-    Cmp.Slider(p, {text="Verify", min=150, max=800, default=150, suffix="ms", callback=function(v) Flick.verifyWait=v/1000 end})
-    Cmp.Slider(p, {text="Return (câmera volta)", min=30, max=300, default=35, suffix="ms", callback=function(v) Flick.returnDur=v/1000 end})
+    Cmp.Section(p, "⚔ TIMINGS (HACK MODE — 1ms MIN)")
+    Cmp.Slider(p, {text="Snap (câmera vai)", min=1, max=100, default=1, suffix="ms", callback=function(v) Flick.snapDur=v/1000 end})
+    Cmp.Slider(p, {text="Hold", min=1, max=300, default=1, suffix="ms", callback=function(v) Flick.holdDur=v/1000 end})
+    Cmp.Slider(p, {text="Verify", min=1, max=800, default=150, suffix="ms", callback=function(v) Flick.verifyWait=v/1000 end})
+    Cmp.Slider(p, {text="Return (câmera volta)", min=1, max=300, default=1, suffix="ms", callback=function(v) Flick.returnDur=v/1000 end})
 end
 do local p = P["FLICK/Pro"]
-    Cmp.Section(p, "🎬 PRO (RAGE: tudo OFF)")
+    Cmp.Section(p, "🎬 PRO (HACK: tudo OFF)")
     Cmp.Toggle(p, {text="Modo Pro", default=false, callback=function(v) Flick.proMode=v end})
-    Cmp.Toggle(p, {text="Reaction Delay", default=false, callback=function(v) Flick.reactionDelay = v and 0.040 or 0 end})
-    Cmp.Slider(p, {text="Reaction (ms)", min=0, max=150, default=0, callback=function(v) Flick.reactionDelay=v/1000 end})
+    Cmp.Toggle(p, {text="Reaction Delay", default=false, callback=function(v) Flick.reactionDelay = v and 0.001 or 0 end})
+    Cmp.Slider(p, {text="Reaction (ms)", min=1, max=150, default=1, callback=function(v) Flick.reactionDelay=v/1000 end})
     Cmp.Toggle(p, {text="Pre-Dip", default=false, callback=function(v) Flick.preDipEnabled=v end})
     Cmp.Toggle(p, {text="Atirar no Pico", default=true, callback=function(v) Flick.fireAtPeak=v end})
     Cmp.Toggle(p, {text="Overshoot Adaptativo", default=false, callback=function(v) Flick.adaptiveOvershoot=v end})
-    Cmp.Slider(p, {text="Overshoot", min=0, max=150, default=10, suffix=" ‰", callback=function(v) Flick.overshootPct=v/1000 end})
+    Cmp.Slider(p, {text="Overshoot", min=0, max=150, default=0, suffix=" ‰", callback=function(v) Flick.overshootPct=v/1000 end})
     Cmp.Toggle(p, {text="Recoil + Settle", default=false, callback=function(v) Flick.recoilEnabled=v end})
     Cmp.Slider(p, {text="Recoil", min=0, max=80, default=0, callback=function(v) Flick.recoilAmount=v/1000 end})
     Cmp.Slider(p, {text="Micro-Jitter", min=0, max=50, default=0, callback=function(v) Flick.microJitter=v/10 end})
     Cmp.Slider(p, {text="Jitter Rate (Hz)", min=10, max=80, default=10, callback=function(v) Flick.microJitterRate=v end})
 end
 do local p = P["FLICK/1-Shot"]
-    Cmp.Section(p, "🎯 ULTRA PRECISION ONE SHOT")
+    Cmp.Section(p, "🎯 HACK MODE — 1 TIRO + WALL CHECK + RETRY")
     Cmp.Toggle(p, {text="One Shot Perfeito", default=true,
-        desc="4 tentativas progressivas + 20 pts LOS + predição iterativa 3-pass",
+        desc="1 tiro por flick · HRP rotation · 12 iter lead · multipoint LOS scan",
         callback=function(v) S.OneShotPerfect=v end})
     Cmp.Toggle(p, {text="Lead + Ping Suavizado", default=true,
-        desc="Cinemática completa (p+v·t+½·a·t²) + ping médio de 8 amostras",
+        desc="Cinemática (p+v·t+½·a·t²) + FPS-aware + ping 8-amostras",
         callback=function(v) S.OneShotLead=v end})
     Cmp.Toggle(p, {text="Gravidade", default=true,
-        desc="Compensa queda de bala em armas não-hitscan",
-        callback=function(v) S.OneShotGravity=v end})
+        desc="Compensa queda de bala em armas não-hitscan", callback=function(v) S.OneShotGravity=v end})
     Cmp.Toggle(p, {text="Adaptativo (decay)", default=true,
-        desc="Aprende offset com decaimento temporal (miss antigo pesa menos)",
-        callback=function(v) S.OneShotAdaptive=v end})
-    Cmp.Section(p, "🎯 LOS LOCK (100% ACCURACY)")
-    Cmp.Button(p, {text="ℹ️ Como funciona o LOS Lock?", callback=function()
-        HB_Toast("3 passes → head LOS → hrp → 20 multipoint → 4 tries", "info")
+        desc="Aprende offset com decaimento temporal", callback=function(v) S.OneShotAdaptive=v end})
+    Cmp.Toggle(p, {text="Retry Automático", default=true,
+        desc="Se 1ª bala missar, re-aim + re-fire UMA vez", callback=function(v) S.RetryMiss=v end})
+    Cmp.Section(p, "🎯 LOS LOCK (HACK MODE)")
+    Cmp.Button(p, {text="ℹ️ Como funciona", callback=function()
+        HB_Toast("Lead 12-pass → Head grid (14 pts) → Neck → UpperTorso → HRP → primeiro com LOS vira alvo → 1 tiro HRP-rotacionado → verify 150ms → retry se missar", "info")
     end})
     Cmp.Section(p, "⚙ AJUSTES")
     Cmp.Toggle(p, {text="One Shot (1 bala)", default=true, callback=function(v) Flick.oneShot=v end})
     Cmp.Slider(p, {text="Post-Shot Settle (ms)", min=0, max=200, default=0, callback=function(v) Flick.postShotSettle=v/1000 end})
+    Cmp.Slider(p, {text="Iterações", min=1, max=20, default=12, callback=function(v) S.OneShotIterations=v end})
 end
 do local p = P["FLICK/Advanced"]
-    Cmp.Section(p, "⚙ CURVAS (RAGE: tudo OFF)")
+    Cmp.Section(p, "⚙ CURVAS (HACK: tudo OFF)")
     Cmp.Toggle(p, {text="Multi-Step Snap", default=false, callback=function(v) S.Adv_MultiStepSnap=v end})
     Cmp.Slider(p, {text="Steps", min=2, max=6, default=3, callback=function(v) S.Adv_MultiStepN=v end})
     Cmp.Toggle(p, {text="Bezier Snap", default=false, callback=function(v) S.Adv_BezierSnap=v end})
@@ -2489,69 +2533,65 @@ do local p = P["FLICK/Advanced"]
     Cmp.Toggle(p, {text="Spline Flick", default=false, callback=function(v) S.Adv_SplineFlick=v end})
     Cmp.Toggle(p, {text="Ballistic Arc", default=false, callback=function(v) S.Adv_BallisticArc=v end})
     Cmp.Toggle(p, {text="Micro-Jitter Return", default=false, callback=function(v) S.Adv_MicroJitterRet=v end})
-    Cmp.Slider(p, {text="Jitter Amount", min=1, max=50, default=5, callback=function(v) S.Adv_MicroJitterAmt=v/10 end})
+    Cmp.Slider(p, {text="Jitter Amount", min=1, max=50, default=1, callback=function(v) S.Adv_MicroJitterAmt=v/10 end})
     Cmp.Toggle(p, {text="Trailing Kill", default=false, callback=function(v) S.Adv_TrailingKill=v end})
     Cmp.Toggle(p, {text="Focus Zoom", default=false, callback=function(v) S.Adv_FocusZoom=v end})
     Cmp.Toggle(p, {text="Priority Switch", default=true, callback=function(v) S.Adv_PrioritySwitch=v end})
     Cmp.Toggle(p, {text="Perfect Return", default=true, callback=function(v) S.Adv_PerfectReturn=v end})
     Cmp.Toggle(p, {text="Adaptive Curve", default=false, callback=function(v) S.Adv_AdaptiveCurve=v end})
     Cmp.Toggle(p, {text="Cancel Window", default=false, callback=function(v) S.Adv_CancelWindow=v end})
-    Cmp.Slider(p, {text="Cancel Window", min=1, max=20, default=3, suffix=" ms", callback=function(v) S.Adv_CancelMs=v end})
+    Cmp.Slider(p, {text="Cancel Window", min=1, max=20, default=1, suffix=" ms", callback=function(v) S.Adv_CancelMs=v end})
 end
 do local p = P["FLICK/WallCheck"]
-    Cmp.Section(p, "🧱 WALL CHECK (RAGE: OFF)")
-    Cmp.Toggle(p, {text="Wall Check (LOS)", default=false, callback=function(v) S.WallCheck=v end})
-    Cmp.Slider(p, {text="Distância Máx", min=100, max=5000, default=5000, suffix=" st", callback=function(v) S.FlickMaxDist=v end})
+    Cmp.Section(p, "🧱 WALL CHECK (TRAVADO ON)")
+    Cmp.Toggle(p, {text="Wall Check (LOS)", default=true, callback=function(v) S.WallCheck=true; HB_Toast("WallCheck travado ON","success") end})
+    Cmp.Slider(p, {text="Distância Máx", min=100, max=9999, default=9999, suffix=" st", callback=function(v) S.FlickMaxDist=v end})
+    Cmp.Button(p, {text="ℹ️ Wall Check travado ligado", callback=function()
+        HB_Toast("WallCheck é forçado ON — não pode desativar. Raycast do Head do jogador até o alvo antes de cada fire.", "info")
+    end})
 end
 do local p = P["FLICK/Camera"]
-    Cmp.Section(p, "🎥 CÂMERA (RAGE: Off)")
-    Cmp.Dropdown(p, {text="Modo", options={"Safe","Off","Full"}, default="Off", callback=function(o) S.FlickCameraMode=o end})
+    Cmp.Section(p, "🎥 CÂMERA (HACK: Off)")
+    Cmp.Dropdown(p, {text="Modo", options={"Off","Safe","Full"}, default="Off", callback=function(o) S.FlickCameraMode=o end})
     Cmp.Button(p, {text="🔧 Reset Câmera Agora", callback=function() HB_ForceRestoreCamera(); HB_Toast("Reset","success") end})
-    Cmp.Section(p, "🛡️ ANTI-VOID")
+    Cmp.Section(p, "🛡️ ANTI-VOID (HARD)")
     Cmp.Toggle(p, {text="Anti-Void", default=true, callback=function(v) S.AntiVoid=v end})
-    Cmp.Slider(p, {text="Y Threshold", min=-300, max=0, default=-50, callback=function(v) S.AntiVoidYThresh=v end})
-    Cmp.Slider(p, {text="Lift", min=3, max=30, default=8, callback=function(v) S.AntiVoidLift=v end})
+    Cmp.Slider(p, {text="Y Threshold", min=-300, max=0, default=-5, callback=function(v) S.AntiVoidYThresh=v end})
+    Cmp.Slider(p, {text="Lift", min=3, max=30, default=20, callback=function(v) S.AntiVoidLift=v end})
 end
 do local p = P["FLICK/Modes"]
-    Cmp.Section(p, "🎬 MODOS")
-    Cmp.Button(p, {text="🥷 Ninja (20/30)", callback=function() HB_ApplyPreset("PRO_CLIP") end})
-    Cmp.Button(p, {text="🎬 Hollywood", callback=function()
-        Flick.snapDur=0.080 Flick.returnDur=0.120 Flick.overshootPct=0.15; HB_Toast("Hollywood","success") end})
-    Cmp.Button(p, {text="✨ Strobe (20/30)", danger=true, callback=function()
-        Flick.snapDur=0.020 Flick.returnDur=0.030; HB_Toast("Strobe","warning") end})
-    Cmp.Button(p, {text="🗡 Assassin (20/30)", callback=function() HB_ApplyPreset("RAGE_PRO") end})
-    Cmp.Button(p, {text="⚡ Speedrun (15/20)", danger=true, callback=function()
-        Flick.snapDur=0.015 Flick.returnDur=0.020; HB_Toast("Speedrun","danger") end})
-    Cmp.Button(p, {text="👤 Legit", callback=function()
-        Flick.snapDur=0.055 Flick.returnDur=0.085 Flick.overshootPct=0.030; HB_Toast("Legit","success") end})
-    Cmp.Button(p, {text="🔥 RAGE + ULTRA PRECISION", danger=true, callback=function()
-        Flick.proMode=false
-        Flick.snapDur=0.014 Flick.holdDur=0.030 Flick.verifyWait=0.150 Flick.returnDur=0.035
-        Flick.microJitter=0 Flick.recoilEnabled=false Flick.preDipEnabled=false
-        Flick.adaptiveOvershoot=false Flick.reactionDelay=0 Flick.postShotSettle=0
-        S.AntiFlickBlock=false S.RateLimit=false S.FakeMiss=false S.PostKillDelay=false
-        S.WallCheck=false S.FlickMaxDist=5000 S.FlickCameraMode="Off"
-        S.OneShotPerfect=true S.OneShotLead=true S.OneShotGravity=true S.OneShotAdaptive=true
-        HB_Toast("RAGE + ULTRA PRECISION aplicado","danger") end})
+    Cmp.Section(p, "💀 HACK MODE (ÚNICO MODO)")
+    Cmp.Button(p, {text="💀 APLICAR HACK MODE (1ms · 12 iter · 1 tiro)", danger=true, callback=function()
+        HB_ApplyUltra()
+        HB_Toast("HACK MODE aplicado","danger")
+    end})
+    Cmp.Section(p, "⚙ TESTES RÁPIDOS")
+    Cmp.Button(p, {text="🐢 LENTO (400ms) só pra debug", danger=true, callback=function()
+        Flick.snapDur=0.400 Flick.returnDur=0.400
+        HB_Toast("Slow 400ms","warning")
+    end})
+    Cmp.Button(p, {text="⚡ Voltar pra 1ms HACK", callback=function()
+        Flick.snapDur=0.001 Flick.holdDur=0.001 Flick.returnDur=0.001 Flick.verifyWait=0.150
+        HB_Toast("1ms restaurado","success")
+    end})
 end
 
--- ================== ESP ==================
 do local p = P["ESP/Basic"]
-    Cmp.Section(p, "◉ ESP (RAGE: ON)")
+    Cmp.Section(p, "◉ ESP (HACK MODE: ON)")
     Cmp.Toggle(p, {text="ESP ATIVADO", default=true, callback=function(v) S.ESP=v end})
     Cmp.Toggle(p, {text="Box", default=true, callback=function(v) S.ESPBox=v end})
     Cmp.Toggle(p, {text="Tracer", default=true, callback=function(v) S.ESPTracer=v end})
-    Cmp.Slider(p, {text="Espessura", min=1, max=6, default=2, callback=function(v) S.ESPThick=v end})
+    Cmp.Slider(p, {text="Espessura", min=1, max=8, default=5, callback=function(v) S.ESPThick=v end})
 end
 do local p = P["ESP/Info"]
-    Cmp.Section(p, "◉ INFO")
+    Cmp.Section(p, "◉ INFO (HACK: tudo ON)")
     Cmp.Toggle(p, {text="Nome + Role", default=true, callback=function(v) S.ESPName=v end})
     Cmp.Toggle(p, {text="Distância", default=true, callback=function(v) S.ESPDist=v end})
     Cmp.Toggle(p, {text="Health Bar", default=true, callback=function(v) S.ESPHealth=v end})
-    Cmp.Toggle(p, {text="Weapon", default=false, callback=function(v) S.ESPWeapon=v end})
+    Cmp.Toggle(p, {text="Weapon", default=true, callback=function(v) S.ESPWeapon=v end})
 end
 do local p = P["ESP/Filter"]
-    Cmp.Section(p, "◉ FILTRO (RAGE: ver tudo)")
+    Cmp.Section(p, "◉ FILTRO (HACK: ver tudo)")
     Cmp.Toggle(p, {text="Mostrar Innocents", default=true, callback=function(v) S.ESPShowInnocents=v end})
     Cmp.Toggle(p, {text="Mostrar Sheriff", default=true, callback=function(v) S.ESPShowSheriff=v end})
     Cmp.Button(p, {text="🔄 Refresh Roles", callback=function()
@@ -2561,12 +2601,14 @@ do local p = P["ESP/Filter"]
     end})
 end
 do local p = P["ESP/Visual"]
-    Cmp.Section(p, "◉ VISUAL (RAGE: Chams+Radar+Timeline ON)")
-    Cmp.Toggle(p, {text="Fill (fundo)", default=false, callback=function(v) S.ESPFill=v end})
-    Cmp.Slider(p, {text="Fill Transparency", min=0, max=100, default=80, suffix="%", callback=function(v) S.ESPFillTransparency=v/100 end})
+    Cmp.Section(p, "◉ VISUAL (HACK: tudo ON)")
+    Cmp.Toggle(p, {text="Fill (fundo)", default=true, callback=function(v) S.ESPFill=v end})
+    Cmp.Slider(p, {text="Fill Transparency", min=0, max=100, default=70, suffix="%", callback=function(v) S.ESPFillTransparency=v/100 end})
     Cmp.Toggle(p, {text="Chams (Highlight)", default=true, callback=function(v) S.Chams=v end})
     Cmp.Toggle(p, {text="Radar", default=true, callback=function(v) S.Radar=v end})
     Cmp.Toggle(p, {text="Timeline Predictor", default=true, callback=function(v) S.TimelinePredictor=v end})
+    Cmp.Toggle(p, {text="ESP Arrows", default=true, callback=function(v) S.ESPArrows=v end})
+    Cmp.Toggle(p, {text="ESP Skeleton", default=true, callback=function(v) S.ESPSkeleton=v end})
 end
 do local p = P["ESP/GunDrop"]
     Cmp.Section(p, "🔫 GUN DROP ESP")
@@ -2597,40 +2639,17 @@ do local p = P["ESP/GunDrop"]
         S.GunDropESPTextColor=c3(120,255,180)
         if _G.HB.RefreshGunDropESP then _G.HB.RefreshGunDropESP() end
     end})
-    Cmp.Button(p, {text="💜 Roxo", callback=function()
-        S.GunDropESPColor=c3(200,80,255) S.GunDropESPOutline=c3(255,255,255)
-        S.GunDropESPTextColor=c3(220,140,255)
-        if _G.HB.RefreshGunDropESP then _G.HB.RefreshGunDropESP() end
-    end})
-    Cmp.Button(p, {text="🌈 Arco-íris (ciclo)", callback=function()
-        task.spawn(function()
-            local hue = 0
-            while S.GunDropESP do
-                hue = (hue + 0.02) % 1
-                S.GunDropESPColor = Color3.fromHSV(hue, 1, 1)
-                S.GunDropESPTextColor = Color3.fromHSV(hue, 0.7, 1)
-                if _G.HB.RefreshGunDropESP then _G.HB.RefreshGunDropESP() end
-                task.wait(0.05)
-            end
-        end)
-    end})
-    Cmp.Section(p, "ℹ️ INFO")
-    Cmp.Button(p, {text="🔍 Forçar Refresh Agora", callback=function()
-        if HB_GunDrop and HB_GunDrop.active then HB_GunDrop.active = nil end
-        HB_Toast("GunDrop ESP atualizado", "success")
-    end})
 end
 
--- ================== VISUAL ==================
 do local p = P["VISUAL/HUD"]
-    Cmp.Section(p, "✦ HUD")
+    Cmp.Section(p, "✦ HUD (HACK MODE)")
     Cmp.Toggle(p, {text="Hitmarker", default=true, callback=function(v) S.Hitmark=v end})
     Cmp.Toggle(p, {text="Kill Feed", default=true, callback=function(v) S.KillFeed=v end})
     Cmp.Toggle(p, {text="Crosshair", default=false, callback=function(v) S.Cross=v end})
     Cmp.Toggle(p, {text="Impact Flash", default=true, callback=function(v) S.FB_ImpactFlash=v end})
 end
 do local p = P["VISUAL/Crosshair"]
-    Cmp.Section(p, "✦ CROSSHAIR (SHARINGAN)")
+    Cmp.Section(p, "✦ CROSSHAIR (SHARINGAN) — HACK: OFF")
     Cmp.Toggle(p, {text="Crosshair Ativado", default=false, callback=function(v)
         S.Cross=v
         if HB_BuildCrosshair then HB_BuildCrosshair() end
@@ -2640,7 +2659,7 @@ do local p = P["VISUAL/Crosshair"]
             S.CrossStyle=o
             if HB_BuildCrosshair then HB_BuildCrosshair() end
         end})
-    Cmp.Slider(p, {text="Tamanho", min=10, max=60, default=24, callback=function(v)
+    Cmp.Slider(p, {text="Tamanho", min=10, max=60, default=32, callback=function(v)
         S.CrossSize=v
         if HB_BuildCrosshair then HB_BuildCrosshair() end
     end})
@@ -2650,11 +2669,6 @@ do local p = P["VISUAL/Crosshair"]
         S.Cross=true S.CrossStyle="Sharingan" S.CrossSize=24 S.CrossFollowMouse=true
         if HB_BuildCrosshair then HB_BuildCrosshair() end
         HB_Toast("Sharingan ativado!", "success")
-    end})
-    Cmp.Button(p, {text="🍥 Ativar Sharingan Grande (40px)", callback=function()
-        S.Cross=true S.CrossStyle="Sharingan" S.CrossSize=40 S.CrossFollowMouse=true
-        if HB_BuildCrosshair then HB_BuildCrosshair() end
-        HB_Toast("Sharingan 40px ativado!", "success")
     end})
     Cmp.Button(p, {text="❌ Desativar Crosshair", danger=true, callback=function()
         S.Cross=false
@@ -2676,7 +2690,7 @@ do local p = P["VISUAL/ReShade"]
     Cmp.Toggle(p, {text="Atmosphere", default=true, callback=function(v) HB_Visuals.atmosphereEnabled=v; HB_ApplyVisuals() end})
 end
 do local p = P["VISUAL/Tracers"]
-    Cmp.Section(p, "🎯 TRACERS")
+    Cmp.Section(p, "🎯 TRACERS (HACK)")
     Cmp.Toggle(p, {text="Tracer Ativado", default=true, callback=function(v) HB_Tracer.enabled=v end})
     Cmp.Toggle(p, {text="Tracer em Faca", default=true, callback=function(v) HB_Tracer.ignoreHitscan=v end})
     Cmp.Slider(p, {text="Duração", min=5, max=100, default=40, suffix=" ×10ms", callback=function(v) HB_Tracer.lifetime=v/100 end})
@@ -2690,27 +2704,27 @@ do local p = P["VISUAL/KillFX"]
     Cmp.Slider(p, {text="Explosão", min=5, max=80, default=25, callback=function(v) HB_KillEffects.explosionY=v end})
 end
 do local p = P["VISUAL/Screen"]
-    Cmp.Section(p, "🖥️ SCREEN STRETCH")
-    Cmp.Toggle(p, {text="Screen Stretch Ativado", default=false,
-        desc="Ajusta o FOV pra deixar os alvos maiores (estilo 4:3 CS)",
+    Cmp.Section(p, "🖥️ SCREEN STRETCH (21:9 Wide · FOV 95)")
+    Cmp.Toggle(p, {text="Screen Stretch Ativado", default=true,
+        desc="Ajusta o FOV pra deixar os alvos maiores (estilo 21:9 CS)",
         callback=function(v)
             S.ScreenStretch=v
             HB_ApplyScreenStretch()
             HB_Toast("Stretch "..(v and "ON" or "OFF"), v and "success" or "warning")
         end})
-    Cmp.Dropdown(p, {text="Preset", default="4:3 Stretch",
+    Cmp.Dropdown(p, {text="Preset", default="21:9 Wide",
         options={"Normal","4:3 Stretch","5:4 Stretch","16:10 Stretch","21:9 Wide","Rage Zoom","Ultra Rage","Custom"},
         callback=function(o)
             S.ScreenStretchPreset = o
             if o ~= "Custom" then
                 S.ScreenStretch = true
-                S.ScreenStretchFOV = HB_ScreenPresets[o] or 70
+                S.ScreenStretchFOV = HB_ScreenPresets[o] or 95
             end
             HB_ApplyScreenStretch()
             HB_Toast("Preset: "..o, "success")
         end})
     Cmp.Section(p, "🎛️ CUSTOM")
-    Cmp.Slider(p, {text="FOV Custom", min=20, max=120, default=52,
+    Cmp.Slider(p, {text="FOV Custom", min=20, max=120, default=95,
         callback=function(v)
             S.ScreenStretchPreset = "Custom"
             S.ScreenStretchFOV = v
@@ -2721,42 +2735,28 @@ do local p = P["VISUAL/Screen"]
     Cmp.Button(p, {text="🎮 Normal (FOV 70)", callback=function()
         S.ScreenStretch=true S.ScreenStretchPreset="Normal" S.ScreenStretchFOV=70
         HB_ApplyScreenStretch(); HB_Toast("Normal", "success") end})
-    Cmp.Button(p, {text="📺 4:3 Stretch (FOV 52) ⭐", danger=true, callback=function()
+    Cmp.Button(p, {text="📺 4:3 Stretch (FOV 52)", callback=function()
         S.ScreenStretch=true S.ScreenStretchPreset="4:3 Stretch" S.ScreenStretchFOV=52
         HB_ApplyScreenStretch(); HB_Toast("4:3 RAGE", "danger") end})
-    Cmp.Button(p, {text="📺 5:4 Stretch (FOV 58)", callback=function()
-        S.ScreenStretch=true S.ScreenStretchPreset="5:4 Stretch" S.ScreenStretchFOV=58
-        HB_ApplyScreenStretch(); HB_Toast("5:4 Stretch", "success") end})
-    Cmp.Button(p, {text="📺 16:10 Stretch (FOV 63)", callback=function()
-        S.ScreenStretch=true S.ScreenStretchPreset="16:10 Stretch" S.ScreenStretchFOV=63
-        HB_ApplyScreenStretch(); HB_Toast("16:10 Stretch", "success") end})
-    Cmp.Button(p, {text="🌌 21:9 Wide (FOV 95)", callback=function()
+    Cmp.Button(p, {text="🌌 21:9 Wide (FOV 95) ⭐ PADRÃO", callback=function()
         S.ScreenStretch=true S.ScreenStretchPreset="21:9 Wide" S.ScreenStretchFOV=95
-        HB_ApplyScreenStretch(); HB_Toast("21:9 Wide", "success") end})
-    Cmp.Button(p, {text="🔥 Rage Zoom (FOV 42)", danger=true, callback=function()
-        S.ScreenStretch=true S.ScreenStretchPreset="Rage Zoom" S.ScreenStretchFOV=42
-        HB_ApplyScreenStretch(); HB_Toast("RAGE ZOOM", "danger") end})
+        HB_ApplyScreenStretch(); HB_Toast("21:9 Wide PADRÃO", "success") end})
     Cmp.Button(p, {text="💀 Ultra Rage (FOV 32)", danger=true, callback=function()
         S.ScreenStretch=true S.ScreenStretchPreset="Ultra Rage" S.ScreenStretchFOV=32
-        HB_ApplyScreenStretch(); HB_Toast("ULTRA RAGE", "danger") end})
+        HB_ApplyScreenStretch(); HB_Toast("ULTRA RAGE FOV 32", "danger") end})
     Cmp.Section(p, "🔄 RESET")
     Cmp.Button(p, {text="🔄 Reset Tela (FOV 70)", danger=true, callback=function()
         HB_ResetScreenStretch()
         HB_Toast("Tela resetada", "warning") end})
-    Cmp.Section(p, "ℹ️ INFO")
-    Cmp.Button(p, {text="ℹ️ O que é Screen Stretch?", callback=function()
-        HB_Toast("FOV baixo = alvos maiores na tela. Ideal 4:3 = FOV 52", "info")
-    end})
 end
 
--- ================== IA ==================
 do local p = P["IA/Core"]
-    Cmp.Section(p, "◈ IA CORE (RAGE: OFF)")
+    Cmp.Section(p, "◈ IA CORE (HACK: OFF)")
     Cmp.Toggle(p, {text="IA On", default=false, callback=function(v) S.AIOn=v end})
     Cmp.Slider(p, {text="NN Rate", min=1, max=50, default=10, suffix=" ‰", callback=function(v) S.NNRate=v/1000 end})
 end
 do local p = P["IA/RevIA"]
-    Cmp.Section(p, "⚡ REV IA (RAGE: tudo OFF)")
+    Cmp.Section(p, "⚡ REV IA (HACK: tudo OFF)")
     local list = {{"Meta-Learning","meta"},{"NAS","nas"},{"Behavioural Cloning","cloning"},
         {"Self-Play","selfPlay"},{"World Model","worldModel"},{"Active Inference","activeInf"},
         {"Transformer","transformer"},{"MoE","moe"},{"Uncertainty","uncert"},{"Causal","causal"},
@@ -2768,7 +2768,7 @@ do local p = P["IA/RevIA"]
     end
 end
 do local p = P["IA/RevHuman"]
-    Cmp.Section(p, "🧠 HUMANA (RAGE: OFF)")
+    Cmp.Section(p, "🧠 HUMANA (HACK: tudo OFF)")
     Cmp.Toggle(p, {text="Warmup", default=false, callback=function(v) S.REV_HUMAN.warmup=v end})
     Cmp.Toggle(p, {text="Emotion", default=false, callback=function(v) S.REV_HUMAN.emotion=v end})
     Cmp.Toggle(p, {text="Cognitive", default=false, callback=function(v) S.REV_HUMAN.cognitive=v end})
@@ -2778,7 +2778,7 @@ do local p = P["IA/RevHuman"]
     Cmp.Toggle(p, {text="Alt Detect", default=false, callback=function(v) S.REV_HUMAN.altDetect=v end})
 end
 do local p = P["IA/RevPhys"]
-    Cmp.Section(p, "⚙ FÍSICA (RAGE: OFF)")
+    Cmp.Section(p, "⚙ FÍSICA (HACK: OFF)")
     Cmp.Toggle(p, {text="Ballistic", default=false, callback=function(v) S.REV_PHYS.ballistic=v end})
     Cmp.Toggle(p, {text="IK", default=false, callback=function(v) S.REV_PHYS.ik=v end})
     Cmp.Toggle(p, {text="Anim Mirror", default=false, callback=function(v) S.REV_PHYS.animMirror=v end})
@@ -2787,7 +2787,7 @@ do local p = P["IA/RevPhys"]
     Cmp.Toggle(p, {text="Jitter Buffer", default=false, callback=function(v) S.REV_PHYS.jitterBuf=v end})
 end
 do local p = P["IA/RevSocial"]
-    Cmp.Section(p, "🎭 SOCIAL (RAGE: OFF)")
+    Cmp.Section(p, "🎭 SOCIAL (HACK: OFF)")
     Cmp.Toggle(p, {text="Anti-Attribution", default=false, callback=function(v) S.REV_SOCIAL.antiAttr=v end})
     Cmp.Toggle(p, {text="Misdirect", default=false, callback=function(v) S.REV_SOCIAL.misdirect=v end})
     Cmp.Toggle(p, {text="Bait", default=false, callback=function(v) S.REV_SOCIAL.bait=v end})
@@ -2795,26 +2795,26 @@ do local p = P["IA/RevSocial"]
     Cmp.Toggle(p, {text="Skill Curve", default=false, callback=function(v) S.REV_SOCIAL.skillCurve=v end})
 end
 do local p = P["IA/RevArch"]
-    Cmp.Section(p, "🔧 ARQUITETURA (RAGE: OFF)")
+    Cmp.Section(p, "🔧 ARQUITETURA (HACK: OFF)")
     Cmp.Toggle(p, {text="Rollback", default=false, callback=function(v) S.REV_ARCH.rollback=v end})
     Cmp.Toggle(p, {text="Diff Sync", default=false, callback=function(v) S.REV_ARCH.diffSync=v end})
 end
 do local p = P["IA/RevFeat"]
-    Cmp.Section(p, "💫 FEATURES (RAGE: OFF)")
+    Cmp.Section(p, "💫 FEATURES (HACK: OFF)")
     Cmp.Toggle(p, {text="What-If", default=false, callback=function(v) S.REV_FEAT.whatIf=v end})
     Cmp.Toggle(p, {text="Forecast", default=false, callback=function(v) S.REV_FEAT.forecast=v end})
     Cmp.Toggle(p, {text="Director", default=false, callback=function(v) S.REV_FEAT.director=v end})
     Cmp.Toggle(p, {text="Blockchain", default=false, callback=function(v) S.REV_FEAT.blockchain=v end})
 end
 do local p = P["IA/RevGame"]
-    Cmp.Section(p, "🎮 GAMEPLAY (RAGE: OFF)")
+    Cmp.Section(p, "🎮 GAMEPLAY (HACK: OFF)")
     Cmp.Toggle(p, {text="Multi-Round", default=false, callback=function(v) S.REV_GAME.multiRound=v end})
     Cmp.Toggle(p, {text="Meta-Game", default=false, callback=function(v) S.REV_GAME.metaGame=v end})
     Cmp.Toggle(p, {text="Role Rotation", default=false, callback=function(v) S.REV_GAME.roleRot=v end})
     Cmp.Toggle(p, {text="Legendary", default=false, callback=function(v) S.REV_GAME.legendary=v end})
 end
 do local p = P["IA/RevStealth"]
-    Cmp.Section(p, "🛡 STEALTH (RAGE: OFF)")
+    Cmp.Section(p, "🛡 STEALTH (HACK: OFF)")
     Cmp.Toggle(p, {text="Adversarial Noise", default=false, callback=function(v) S.REV_STEALTH.advExamples=v end})
     Cmp.Toggle(p, {text="Jitter Dist", default=false, callback=function(v) S.REV_STEALTH.jitterDist=v end})
     Cmp.Toggle(p, {text="Anti-Anti-Cheat", default=false, callback=function(v) S.REV_STEALTH.antiAntiCheat=v end})
@@ -2822,7 +2822,7 @@ do local p = P["IA/RevStealth"]
     Cmp.Toggle(p, {text="Plausible", default=false, callback=function(v) S.REV_STEALTH.plausible=v end})
 end
 do local p = P["IA/RevMad"]
-    Cmp.Section(p, "🌀 MAD (RAGE: OFF)")
+    Cmp.Section(p, "🌀 MAD (HACK: OFF)")
     Cmp.Toggle(p, {text="Neuro-Sym", default=false, callback=function(v) S.REV_MAD.neuroSym=v end})
     Cmp.Toggle(p, {text="Quantum", default=false, callback=function(v) S.REV_MAD.quantum=v end})
     Cmp.Toggle(p, {text="Evolutionary", default=false, callback=function(v) S.REV_MAD.evolutionary=v end})
@@ -2834,15 +2834,22 @@ do local p = P["IA/RevMad"]
     Cmp.Toggle(p, {text="Recursive", default=false, callback=function(v) S.REV_MAD.recursive=v end})
 end
 
--- ================== SPEED ==================
 do local p = P["SPEED/Base"]
-    Cmp.Section(p, "⚡ BASE (RAGE)")
-    Cmp.Slider(p, {text="Snap (ms)", min=15, max=500, default=15, suffix="ms", callback=function(v) Flick.snapDur=v/1000 end})
-    Cmp.Slider(p, {text="Return (ms)", min=15, max=500, default=35, suffix="ms", callback=function(v) Flick.returnDur=v/1000 end})
+    Cmp.Section(p, "⚡ BASE — HACK MODE (1ms MIN)")
+    Cmp.Slider(p, {text="Snap (ms)", min=1, max=500, default=1, suffix="ms", callback=function(v) Flick.snapDur=v/1000 end})
+    Cmp.Slider(p, {text="Hold (ms)", min=1, max=500, default=1, suffix="ms", callback=function(v) Flick.holdDur=v/1000 end})
+    Cmp.Slider(p, {text="Verify (ms)", min=1, max=800, default=150, suffix="ms", callback=function(v) Flick.verifyWait=v/1000 end})
+    Cmp.Slider(p, {text="Return (ms)", min=1, max=500, default=1, suffix="ms", callback=function(v) Flick.returnDur=v/1000 end})
+    Cmp.Button(p, {text="💀 Reaplicar HACK MODE", danger=true, callback=function()
+        HB_ApplyUltra()
+        HB_Toast("HACK MODE reaplicado","danger")
+    end})
 end
 do local p = P["SPEED/Advanced"]
-    Cmp.Section(p, "🚀 AVANÇADO (RAGE: tudo ON)")
-    Cmp.Toggle(p, {text="Sub-1ms Snap (20ms)", default=true, callback=function(v) S.Sub1msSnap=v end})
+    Cmp.Section(p, "🚀 AVANÇADO — HACK MODE (tudo ON)")
+    Cmp.Slider(p, {text="Max Cycles", min=1, max=20, default=3, callback=function(v) S.MaxCycles=v end})
+    Cmp.Slider(p, {text="Cycle Return (ms)", min=1, max=100, default=1, suffix="ms", callback=function(v) S.CycleReturnMs=v end})
+    Cmp.Toggle(p, {text="Sub-1ms Snap", default=true, callback=function(v) S.Sub1msSnap=v end})
     Cmp.Toggle(p, {text="Dynamic Snap Speed", default=true, callback=function(v) S.DynamicSnapSpeed=v end})
     Cmp.Toggle(p, {text="Adaptive Snap Distância", default=true, callback=function(v) S.AdaptiveSnapDist=v end})
     Cmp.Toggle(p, {text="Progressive Return", default=true, callback=function(v) S.ProgressiveReturn=v end})
@@ -2852,22 +2859,23 @@ do local p = P["SPEED/Advanced"]
     Cmp.Toggle(p, {text="Slow-Mo Flick", default=false, callback=function(v) S.SlowMoFlick=v end})
 end
 
--- ================== MODES ==================
 do local p = P["MODES/FlickModes"]
-    Cmp.Section(p, "🎬 MODOS DE FLICK")
-    Cmp.Button(p, {text="🥷 Ninja (20/30)", callback=function() HB_ApplyPreset("PRO_CLIP") end})
-    Cmp.Button(p, {text="🎬 Hollywood", callback=function()
-        Flick.snapDur=0.080 Flick.returnDur=0.120 Flick.overshootPct=0.15; HB_Toast("Hollywood","success") end})
-    Cmp.Button(p, {text="✨ Strobe", danger=true, callback=function()
-        Flick.snapDur=0.020 Flick.returnDur=0.030; HB_Toast("Strobe","warning") end})
-    Cmp.Button(p, {text="🗡 Assassin", callback=function() HB_ApplyPreset("RAGE_PRO") end})
-    Cmp.Button(p, {text="⚡ Speedrun (15/20)", danger=true, callback=function()
-        Flick.snapDur=0.015 Flick.returnDur=0.020; HB_Toast("Speedrun","danger") end})
-    Cmp.Button(p, {text="👤 Legit", callback=function()
-        Flick.snapDur=0.055 Flick.returnDur=0.085; HB_Toast("Legit","success") end})
+    Cmp.Section(p, "💀 HACK MODE (ÚNICO)")
+    Cmp.Button(p, {text="💀 APLICAR HACK MODE", danger=true, callback=function()
+        HB_ApplyUltra()
+        HB_Toast("HACK MODE aplicado","danger")
+    end})
+    Cmp.Button(p, {text="🔧 Restaurar Timings 1ms", callback=function()
+        Flick.snapDur=0.001 Flick.holdDur=0.001 Flick.returnDur=0.001 Flick.verifyWait=0.150
+        HB_Toast("1ms OK","success")
+    end})
+    Cmp.Button(p, {text="🔄 Reset Câmera", callback=function()
+        HB_ForceRestoreCamera()
+        HB_Toast("Câmera OK","success")
+    end})
 end
 do local p = P["MODES/MM2"]
-    Cmp.Section(p, "🎮 MM2 (RAGE: auto-flick ON)")
+    Cmp.Section(p, "🎮 MM2 (HACK: auto-flick ON)")
     Cmp.Toggle(p, {text="Knife Auto-Flick", default=true, callback=function(v) S.MM2_KnifeAutoFlick=v end})
     Cmp.Toggle(p, {text="Gun Auto-Flick", default=true, callback=function(v) S.MM2_GunAutoFlick=v end})
     Cmp.Toggle(p, {text="Round-Start Flick", default=true, callback=function(v) S.MM2_RoundStartFlick=v end})
@@ -2876,16 +2884,21 @@ do local p = P["MODES/MM2"]
     Cmp.Toggle(p, {text="Death Flick", default=true, callback=function(v) S.MM2_DeathFlick=v end})
 end
 do local p = P["MODES/Presets"]
-    Cmp.Section(p, "⚡ PRESETS")
-    Cmp.Button(p, {text="⚡ TRYHARD", callback=function() HB_PresetTryhard() end})
-    Cmp.Button(p, {text="🎯 PRO CLIP", callback=function() HB_ApplyPreset("PRO_CLIP") end})
-    Cmp.Button(p, {text="🔥 RAGE PRO", danger=true, callback=function() HB_ApplyPreset("RAGE_PRO") end})
-    Cmp.Button(p, {text="💀 RAGE MAX", danger=true, callback=function() HB_PresetRageMax() end})
-    Cmp.Button(p, {text="☠ RAGE TRYHARD", danger=true, callback=function() HB_ApplyPreset("RAGE_TRYHARD") end})
-    Cmp.Button(p, {text="🔄 RESETAR", callback=function() HB_PresetReset() end})
+    Cmp.Section(p, "💀 HACK MODE — CONFIG ÚNICA")
+    Cmp.Button(p, {text="💀 APLICAR HACK MODE AGORA", danger=true, callback=function()
+        HB_ApplyUltra()
+        HB_Toast("HACK MODE aplicado","danger")
+    end})
+    Cmp.Section(p, "ℹ️ INFO")
+    Cmp.Button(p, {text="ℹ️ Por que só uma config?", callback=function()
+        HB_Toast("Presets removidos. HACK MODE é a única e mais forte.", "info")
+    end})
+    Cmp.Button(p, {text="🔄 Reset Seguro (só câmera)", callback=function()
+        HB_ForceRestoreCamera()
+        HB_Toast("Câmera OK","success")
+    end})
 end
 
--- ================== FEEDBACK ==================
 do local p = P["FEEDBACK/Visual"]
     Cmp.Section(p, "🎨 VISUAL")
     Cmp.Toggle(p, {text="Flick Trail", default=true, callback=function(v) S.FB_FlickTrail=v end})
@@ -2904,9 +2917,8 @@ do local p = P["FEEDBACK/HUDCounter"]
         S.FB_FlickCounter=v; if FLICK_COUNTER then FLICK_COUNTER.Visible=v end end})
 end
 
--- ================== ADV ==================
 do local p = P["ADV/Curves"]
-    Cmp.Section(p, "⚙ CURVAS (RAGE: OFF)")
+    Cmp.Section(p, "⚙ CURVAS (HACK: OFF)")
     Cmp.Toggle(p, {text="Bezier Snap", default=false, callback=function(v) S.Adv_BezierSnap=v end})
     Cmp.Slider(p, {text="Bezier P1", min=0, max=100, default=25, callback=function(v) S.Adv_BezierP1=v/100 end})
     Cmp.Slider(p, {text="Bezier P2", min=0, max=100, default=75, callback=function(v) S.Adv_BezierP2=v/100 end})
@@ -2916,41 +2928,39 @@ end
 do local p = P["ADV/Extras"]
     Cmp.Section(p, "🎯 EXTRAS")
     Cmp.Toggle(p, {text="Micro-Jitter Return", default=false, callback=function(v) S.Adv_MicroJitterRet=v end})
-    Cmp.Slider(p, {text="Jitter Amount", min=1, max=50, default=5, callback=function(v) S.Adv_MicroJitterAmt=v/10 end})
+    Cmp.Slider(p, {text="Jitter Amount", min=1, max=50, default=1, callback=function(v) S.Adv_MicroJitterAmt=v/10 end})
     Cmp.Toggle(p, {text="Trailing Kill", default=false, callback=function(v) S.Adv_TrailingKill=v end})
     Cmp.Toggle(p, {text="Focus Zoom", default=false, callback=function(v) S.Adv_FocusZoom=v end})
     Cmp.Toggle(p, {text="Priority Switch", default=true, callback=function(v) S.Adv_PrioritySwitch=v end})
     Cmp.Toggle(p, {text="Perfect Return", default=true, callback=function(v) S.Adv_PerfectReturn=v end})
     Cmp.Toggle(p, {text="Cancel Window", default=false, callback=function(v) S.Adv_CancelWindow=v end})
-    Cmp.Slider(p, {text="Cancel Window", min=1, max=20, default=3, suffix=" ms", callback=function(v) S.Adv_CancelMs=v end})
+    Cmp.Slider(p, {text="Cancel Window", min=1, max=20, default=1, suffix=" ms", callback=function(v) S.Adv_CancelMs=v end})
 end
 do local p = P["ADV/Persona"]
-    Cmp.Section(p, "🎭 PERSONA (RAGE: aggressive)")
+    Cmp.Section(p, "🎭 PERSONA (HACK: aggressive 0%)")
     Cmp.Dropdown(p, {text="Persona", options={"aggressive","cautious","imprevisivel","calculista","casual"},
         default="aggressive", callback=function(o) S.REV_HUMAN.persona=o; PersonaApply() end})
     Cmp.Slider(p, {text="Strength", min=0, max=100, default=0, suffix="%", callback=function(v) S.REV_HUMAN.personaStrength=v/100 end})
 end
 
--- ================== MM2 ==================
 do local p = P["MM2/Flick"]
-    Cmp.Section(p, "🎮 MM2 FLICK (RAGE)")
+    Cmp.Section(p, "🎮 MM2 FLICK (HACK MODE)")
     Cmp.Toggle(p, {text="Knife Auto-Flick", default=true, callback=function(v) S.MM2_KnifeAutoFlick=v end})
     Cmp.Toggle(p, {text="Gun Auto-Flick", default=true, callback=function(v) S.MM2_GunAutoFlick=v end})
     Cmp.Toggle(p, {text="Round-Start Flick", default=true, callback=function(v) S.MM2_RoundStartFlick=v end})
 end
 do local p = P["MM2/Protect"]
-    Cmp.Section(p, "🎮 MM2 PROTECT (RAGE: protect OFF)")
+    Cmp.Section(p, "🎮 MM2 PROTECT (HACK: protect OFF)")
     Cmp.Toggle(p, {text="Sheriff Protect", default=false, callback=function(v) S.MM2_SheriffProtect=v end})
     Cmp.Toggle(p, {text="After-Kill Reset", default=true, callback=function(v) S.MM2_AfterKillReset=v end})
     Cmp.Toggle(p, {text="Death Flick", default=true, callback=function(v) S.MM2_DeathFlick=v end})
 end
 
--- ================== DEBUG ==================
 local DEBUG_HUD
 do local p = P["DEBUG/HUD"]
     Cmp.Section(p, "🐞 DEBUG HUD")
     DEBUG_HUD = HB_Create("TextLabel", {
-        Size=newUD2(1,0,0,240), Position=newUD2(0,0,0,32),
+        Size=newUD2(1,0,0,260), Position=newUD2(0,0,0,32),
         BackgroundColor3=c3(0,0,0), BackgroundTransparency=0.4,
         BorderSizePixel=0, Text="",
         Font=E_CODE, TextSize=11, TextColor3=c3(120,255,120),
@@ -2970,10 +2980,6 @@ do local p = P["DEBUG/Tests"]
         for k in pairs_(RoleCache) do RoleCache[k]=nil end RoleCacheTime=0
         HB_Toast("Roles OK","success")
     end})
-    Cmp.Button(p, {text="🐢 LENTO (400ms)", danger=true, callback=function()
-        Flick.snapDur=0.400 Flick.returnDur=0.400; HB_Toast("Slow 400ms","warning") end})
-    Cmp.Button(p, {text="⚡ RÁPIDO (15/15ms)", callback=function()
-        Flick.snapDur=0.015 Flick.returnDur=0.015; HB_Toast("Fast 15ms","success") end})
     Cmp.Button(p, {text="🔧 Reset Câmera", callback=function() HB_ForceRestoreCamera(); HB_Toast("Reset","success") end})
     Cmp.Button(p, {text="🔥 PANIC", danger=true, callback=function()
         S.AutoFlick=false S.ESP=false S.TrigOn=false; HB_ForceRestoreCamera(); HB_Toast("PANIC","danger") end})
@@ -2981,25 +2987,28 @@ end
 do local p = P["DEBUG/Info"]
     Cmp.Section(p, "🔍 INFO")
     Cmp.Button(p, {text="🔍 Print Debug (console)", callback=function()
-        print("=== HELLBORN v10.0 · ULTRA PRECISION ===")
+        print("=== HELLBORN v10.1 · HACK MODE · 1MS · 12 ITER · 1 TIRO · WALL ON ===")
         print("Cache:", #Cache.List, "Snap:", Flick.snapDur, "Ret:", Flick.returnDur)
         print("OneShot:", S.OneShotPerfect, "Lead:", S.OneShotLead, "Grav:", S.OneShotGravity, "Adapt:", S.OneShotAdaptive)
+        print("OneShotIterations:", S.OneShotIterations, "RetryMiss:", S.RetryMiss)
+        print("WallCheck:", S.WallCheck, "(TRAVADO)", "Crosshair:", S.Cross)
         print("Stretch:", S.ScreenStretch, "Preset:", S.ScreenStretchPreset, "FOV:", Camera.FieldOfView)
         print("Hit attempts:", HB_DBG.hitAttempts or 0, "Hit success:", HB_DBG.hitSuccess or 0)
+        print("Retries:", HB_DBG.retries or 0, "WallSkips:", HB_DBG.wallSkips or 0)
         print("Last hit type:", HB_DBG.lastHitType or "none")
-        print("Crosshair:", S.Cross, "Style:", S.CrossStyle, "Size:", S.CrossSize)
         print("Ping smoothed:", HB_GetSmoothedPing())
+        print("Theme:", S.Theme, "FlickMaxDist:", S.FlickMaxDist)
+        print("Config: 1 TIRO + HRP rotation + multipoint LOS + retry (max 1)")
         local s1 = FindSlot1Tool()
         print("Slot1:", s1 and s1.Name or "nil")
         HB_Toast("Ver console (F9)","success")
     end})
 end
 
--- ================== STATS ==================
 do local p = P["STATS/Session"]
     Cmp.Section(p, "▤ SESSÃO")
     local box = HB_Create("Frame", {
-        Size=newUD2(1,0,0,300), BackgroundColor3=Palette.Elevated, BorderSizePixel=0
+        Size=newUD2(1,0,0,340), BackgroundColor3=Palette.Elevated, BorderSizePixel=0
     }, p)
     HB_Corner(box, 8)
     UI.StatsDisplay = HB_Create("TextLabel", {
@@ -3015,17 +3024,17 @@ do local p = P["STATS/Reset"]
         S.Kills=0 S.Deaths=0 S.Hits=0 S.Misses=0 S.Streak=0 S.BestStreak=0
         Acc.shots = {}
         HB_DBG.hitAttempts = 0; HB_DBG.hitSuccess = 0
+        HB_DBG.retries = 0; HB_DBG.wallSkips = 0
         HB_Toast("Stats resetados","success")
     end})
 end
 
--- ================== CONFIG ==================
 do local p = P["CONFIG/Theme"]
-    Cmp.Section(p, "🎨 TEMA")
+    Cmp.Section(p, "🎨 TEMA (HACK: Blood)")
     local list = {}
     for k in pairs_(Themes) do list[#list+1] = k end
     tsort(list)
-    Cmp.Dropdown(p, {text="Cor", options=list, default="Red",
+    Cmp.Dropdown(p, {text="Cor", options=list, default="Blood",
         callback=function(o) if Themes[o] then Palette.Accent = Themes[o]; S.Theme=o end end})
 end
 do local p = P["CONFIG/System"]
@@ -3034,9 +3043,9 @@ do local p = P["CONFIG/System"]
     Cmp.Toggle(p, {text="Chat Commands", default=true, callback=function(v) S.ChatCommands=v end})
 end
 do local p = P["CONFIG/AutoSave"]
-    Cmp.Section(p, "💾 AUTO-SAVE")
+    Cmp.Section(p, "💾 AUTO-SAVE (NÃO CARREGA NO BOOT)")
     Cmp.Button(p, {text="💾 Salvar Agora", callback=function() HB_AutoSaveTick(); HB_Toast("Saved","success") end})
-    Cmp.Button(p, {text="📂 Restaurar", callback=function() HB_AutoSaveLoad(); HB_Toast("Loaded","success") end})
+    Cmp.Button(p, {text="📂 Restaurar (pode quebrar HACK MODE)", callback=function() HB_AutoSaveLoad(); HB_Toast("Loaded","success") end})
     Cmp.Button(p, {text="🗑 Apagar", danger=true, callback=function() HB_AutoSaveClear(); HB_Toast("Cleared","danger") end})
 end
 
@@ -3079,7 +3088,6 @@ UIS_InputEnded:Connect(function(input)
     if input.UserInputType == E_MOUSE1 then UI_dragState.active = false end
 end)
 
---========= ESP / RADAR / TIMELINE / HUD =========
 ESP_GUI = HB_Create("ScreenGui", {Name="HB_ESP_Overlay", ResetOnSpawn=false, IgnoreGuiInset=true, DisplayOrder=90}, PG)
 ESP_HOLDER = HB_Create("Frame", {Size=newUD2(1,0,1,0), BackgroundTransparency=1}, ESP_GUI)
 ESP_COLORS = {Murderer=c3(255,40,40), Sheriff=c3(50,140,255), Innocent=c3(50,220,90), Dead=c3(120,120,120)}
@@ -3088,8 +3096,8 @@ ESP_CACHE = {}; CHAMS_CACHE = {}
 
 function ESP_create()
     local box = HB_Create("Frame", {BackgroundTransparency=1, BorderSizePixel=0, Visible=false, ZIndex=5}, ESP_HOLDER)
-    local st = HB_Create("UIStroke", {Color=c3(255,255,255), Thickness=2, Transparency=0}, box)
-    local fill = HB_Create("Frame", {Size=newUD2(1,0,1,0), BackgroundColor3=c3(255,255,255), BackgroundTransparency=0.8, BorderSizePixel=0, ZIndex=1}, box); HB_Corner(fill, 2)
+    local st = HB_Create("UIStroke", {Color=c3(255,255,255), Thickness=5, Transparency=0}, box)
+    local fill = HB_Create("Frame", {Size=newUD2(1,0,1,0), BackgroundColor3=c3(255,255,255), BackgroundTransparency=0.7, BorderSizePixel=0, ZIndex=1}, box); HB_Corner(fill, 2)
     local nameTag = HB_Create("TextLabel", {Size=newUD2(1,0,0,16), Position=newUD2(0,0,0,-20), BackgroundTransparency=1, Text="", Font=E_GOTHAM_BOLD, TextSize=13, TextColor3=c3(255,255,255), TextStrokeTransparency=0, TextStrokeColor3=c3(0,0,0), TextXAlignment=E_TXT_CENTER, Visible=false, ZIndex=7}, box)
     local distTag = HB_Create("TextLabel", {Size=newUD2(1,0,0,12), Position=newUD2(0,0,0,-8), BackgroundTransparency=1, Text="", Font=E_CODE, TextSize=10, TextColor3=c3(220,220,220), TextStrokeTransparency=0, TextStrokeColor3=c3(0,0,0), TextXAlignment=E_TXT_CENTER, Visible=false, ZIndex=7}, box)
     local healthBg = HB_Create("Frame", {Size=newUD2(0,3,1,0), Position=newUD2(0,-7,0,0), BackgroundColor3=c3(0,0,0), BackgroundTransparency=0.4, BorderSizePixel=0, Visible=false, ZIndex=7}, box)
@@ -3119,8 +3127,7 @@ for _, cfg in ipairs_({ {-8,-8,45},{8,-8,-45},{-8,8,-45},{8,8,45} }) do
         AnchorPoint=Vector2.new(0.5,0.5), BackgroundColor3=c3(255,255,255), BorderSizePixel=0, Rotation=cfg[3]}, HITMARKER)
 end
 
--- ================= CROSSHAIR (SHARINGAN) =================
-CROSSHAIR = HB_Create("Frame", {Size=newUD2(0,24,0,24), Position=newUD2(0.5,-12,0.5,-12), BackgroundTransparency=1, Visible=S.Cross, ZIndex=100}, HUD_GUI)
+CROSSHAIR = HB_Create("Frame", {Size=newUD2(0,32,0,32), Position=newUD2(0.5,-16,0.5,-16), BackgroundTransparency=1, Visible=false, ZIndex=100}, HUD_GUI)
 
 function HB_BuildCrosshair()
     if not CROSSHAIR then return end
@@ -3128,7 +3135,6 @@ function HB_BuildCrosshair()
     CROSSHAIR.Size = newUD2(0, S.CrossSize, 0, S.CrossSize)
     CROSSHAIR.Visible = S.Cross
     local size = S.CrossSize
-
     if S.CrossStyle == "Sharingan" then
         local bg = Instance.new("Frame")
         bg.Size = UDim2.new(1, 0, 1, 0)
@@ -3136,7 +3142,6 @@ function HB_BuildCrosshair()
         bg.BorderSizePixel = 0
         bg.Parent = CROSSHAIR
         local bgCorner = Instance.new("UICorner"); bgCorner.CornerRadius = UDim.new(1, 0); bgCorner.Parent = bg
-
         local ring = Instance.new("Frame")
         ring.Size = UDim2.new(0.85, 0, 0.85, 0)
         ring.Position = UDim2.new(0.075, 0, 0.075, 0)
@@ -3144,7 +3149,6 @@ function HB_BuildCrosshair()
         ring.BorderSizePixel = 0
         ring.Parent = CROSSHAIR
         local ringCorner = Instance.new("UICorner"); ringCorner.CornerRadius = UDim.new(1, 0); ringCorner.Parent = ring
-
         local innerRed = Instance.new("Frame")
         innerRed.Size = UDim2.new(0.8, 0, 0.8, 0)
         innerRed.Position = UDim2.new(0.1, 0, 0.1, 0)
@@ -3152,14 +3156,12 @@ function HB_BuildCrosshair()
         innerRed.BorderSizePixel = 0
         innerRed.Parent = CROSSHAIR
         local innerRedCorner = Instance.new("UICorner"); innerRedCorner.CornerRadius = UDim.new(1, 0); innerRedCorner.Parent = innerRed
-
         for i = 1, 3 do
             local blade = Instance.new("Frame")
             blade.Size = UDim2.new(1, 0, 1, 0)
             blade.BackgroundTransparency = 1
             blade.Rotation = (i - 1) * 120
             blade.Parent = innerRed
-
             local dot = Instance.new("Frame")
             dot.Size = UDim2.new(0.22, 0, 0.22, 0)
             dot.Position = UDim2.new(0.5, 0, 0.1, 0)
@@ -3168,7 +3170,6 @@ function HB_BuildCrosshair()
             dot.BorderSizePixel = 0
             dot.Parent = blade
             local dotCorner = Instance.new("UICorner"); dotCorner.CornerRadius = UDim.new(1, 0); dotCorner.Parent = dot
-
             local tail = Instance.new("Frame")
             tail.Size = UDim2.new(0.08, 0, 0.3, 0)
             tail.Position = UDim2.new(0.5, 0, 0.1, 0)
@@ -3179,7 +3180,6 @@ function HB_BuildCrosshair()
             tail.Parent = blade
             local tailCorner = Instance.new("UICorner"); tailCorner.CornerRadius = UDim.new(1, 0); tailCorner.Parent = tail
         end
-
         local center = Instance.new("Frame")
         center.Size = UDim2.new(0.15, 0, 0.15, 0)
         center.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -3227,15 +3227,14 @@ RS.RenderStepped:Connect(function()
         CROSSHAIR.Position = UDim2.new(0.5, -(S.CrossSize/2), 0.5, -(S.CrossSize/2))
     end
 end)
--- ========================================================
 
 COOLDOWN_BAR = HB_Create("Frame", {Size=newUD2(0,80,0,6), Position=newUD2(0.5,-40,1,-30),
     BackgroundColor3=c3(30,30,40), BorderSizePixel=0, Visible=false, ZIndex=50}, HUD_GUI)
 HB_Corner(COOLDOWN_BAR, 3)
 COOLDOWN_FILL = HB_Create("Frame", {Size=newUD2(1,0,1,0), BackgroundColor3=Palette.Accent, BorderSizePixel=0}, COOLDOWN_BAR)
 HB_Corner(COOLDOWN_FILL, 3)
-FLICK_COUNTER = HB_Create("TextLabel", {Size=newUD2(0,750,0,22), Position=newUD2(0,20,0,20),
-    BackgroundTransparency=1, Text="FLICKS: 0 | KILLS: 0", Font=E_CODE, TextSize=14,
+FLICK_COUNTER = HB_Create("TextLabel", {Size=newUD2(0,1000,0,22), Position=newUD2(0,20,0,20),
+    BackgroundTransparency=1, Text="💀 HACK MODE | 1MS | 12 ITER | 1 TIRO | KILLS: 0", Font=E_CODE, TextSize=14,
     TextColor3=Palette.Accent, TextXAlignment=E_TXT_LEFT, TextStrokeTransparency=0.4,
     TextStrokeColor3=c3(0,0,0), ZIndex=10}, HUD_GUI)
 
@@ -3324,129 +3323,95 @@ function HB_AutoSaveClear()
     _G[HB_AutoSave.saveKey] = nil; HB_AutoSave.savesCount = 0
 end
 
-HB_Presets = {
-    TRYHARD = {AutoFlick=true, PullSlot1=true, AlignTol=1, AimSmooth=0.02,
-        RateLimit=false, FakeMiss=false, Humanize=false, AntiFlickBlock=false,
-        ESP=true, Chams=true, Radar=true, Hitmark=true, KillFeed=true,
-        WallCheck=true, CycleEnabled=false, MaxCycles=1, FlickMaxDist=2000,
-        OneShotPerfect=true, OneShotLead=true, OneShotGravity=true, OneShotAdaptive=true},
-    PRO_CLIP = {AutoFlick=true, PullSlot1=true, AlignTol=0.3, AimSmooth=0.0,
-        RateLimit=false, FakeMiss=false, Humanize=true, AntiFlickBlock=false,
-        AntiFlickBackoff=0, PostKillDelay=false,
-        ESP=false, Chams=false, Radar=false, Hitmark=true, KillFeed=true,
-        Cross=false, CrossStyle="Sharingan", CrossSize=24, CrossFollowMouse=true,
-        WallCheck=true, CycleEnabled=false, MaxCycles=1,
-        FlickMaxDist=4000, SilentOn=true, SmartTarget=true, PreAim=true, StickyAim=true,
-        StickyAimStrength=0.5, HitscanOpt=false, FPSAdaptive=true, FPSAdaptiveMinFPS=30,
-        OneShotPerfect=true, OneShotLead=true, OneShotGravity=true, OneShotAdaptive=true},
-    RAGE_PRO = {AutoFlick=true, PullSlot1=true, AlignTol=0.1, AimSmooth=0.0,
-        RateLimit=false, FakeMiss=false, Humanize=false, AntiFlickBlock=false,
-        AntiFlickBackoff=0, PostKillDelay=false, RandomAim=false, WeaponCooldownCheck=false,
-        ESP=true, ESPThick=3, Chams=true, Radar=true, TimelinePredictor=true,
-        Hitmark=true, KillFeed=true, Cross=true, CrossStyle="Sharingan", CrossSize=28, CrossFollowMouse=true,
-        WallCheck=false, CycleEnabled=false, MaxCycles=1, FlickMaxDist=5000,
-        SilentOn=true, SmartTarget=true, PreAim=true, StickyAim=true,
-        StickyAimStrength=1.0, HitscanOpt=false, FPSAdaptive=true, FPSAdaptiveMinFPS=20,
-        HeadOnlyLock=true, FlickCameraMode="Off",
-        OneShotPerfect=true, OneShotLead=true, OneShotGravity=true, OneShotAdaptive=true,
-        ScreenStretch=true, ScreenStretchPreset="4:3 Stretch", ScreenStretchFOV=52},
-    RAGE_MAX = {AutoFlick=true, PullSlot1=true, AlignTol=0.5, AimSmooth=0.0,
-        RateLimit=false, FakeMiss=false, Humanize=false, AntiFlickBlock=false,
-        ESP=true, ESPThick=3, Chams=true, Radar=true, TimelinePredictor=true,
-        Hitmark=true, KillFeed=true, Cross=true, CrossSize=32, CrossStyle="Sharingan", CrossFollowMouse=true,
-        WallCheck=false, CycleEnabled=false, MaxCycles=1, FlickMaxDist=5000,
-        HeadOnlyLock=true, FlickCameraMode="Off",
-        OneShotPerfect=true, OneShotLead=true, OneShotGravity=true, OneShotAdaptive=true,
-        ScreenStretch=true, ScreenStretchPreset="Rage Zoom", ScreenStretchFOV=42},
-    RAGE_TRYHARD = {AutoFlick=true, PullSlot1=true, AlignTol=0.5, AimSmooth=0.0,
-        RateLimit=false, FakeMiss=false, Humanize=false, AntiFlickBlock=false,
-        AntiFlickBackoff=0, PostKillDelay=false, RandomAim=false, WeaponCooldownCheck=false,
-        ESP=true, ESPThick=3, Chams=true, Radar=true, TimelinePredictor=true,
-        Hitmark=true, KillFeed=true, Cross=true, CrossStyle="Sharingan", CrossSize=30, CrossFollowMouse=true,
-        WallCheck=false, FlickMaxDist=5000, CycleEnabled=false, MaxCycles=1,
-        SilentOn=true, SmartTarget=true, PreAim=true, StickyAim=true,
-        StickyAimStrength=1.0, HitscanOpt=false, FPSAdaptive=true, FPSAdaptiveMinFPS=20,
-        HeadOnlyLock=true, FlickCameraMode="Off", Theme="Blood",
-        OneShotPerfect=true, OneShotLead=true, OneShotGravity=true, OneShotAdaptive=true,
-        ScreenStretch=true, ScreenStretchPreset="Ultra Rage", ScreenStretchFOV=32},
+HB_ULTRA = {
+    AutoFlick=true, PullSlot1=true, AlignTol=0, AimSmooth=0, SilentOn=true,
+    SmartTarget=true, PreAim=true, StickyAim=true, StickyAimStrength=1.0,
+    HeadOnlyLock=true, NeckShot=false, BackstabSnap=true,
+    VerticalPriority=true, ClosestToCrosshair=true, ThreatTrajectory=true,
+    TrigOn=false, TrigRad=300, TrigCD=0.01,
+    MovingTargetPredict=true, KalmanPredictV2=true, KalmanPredTime=0.01,
+    JukeCounter=true, VelocityMatch=true, HitscanOpt=false,
+    RateLimit=false, FakeMiss=false, Humanize=false, AntiFlickBlock=false,
+    AntiFlickBackoff=0, PostKillDelay=false, PostKillDelayMs=0, RandomAim=false,
+    WeaponCooldownCheck=false, FPSAdaptive=false, FPSAdaptiveMinFPS=10,
+    WallCheck=true, FlickMaxDist=9999, CycleEnabled=true, MaxCycles=3,
+    CycleReturnMs=1, FlickCameraMode="Off",
+    ESP=true, ESPThick=5, Chams=true, Radar=true, TimelinePredictor=true,
+    ESPBox=true, ESPHealth=true, ESPName=true, ESPDist=true, ESPTracer=true,
+    ESPWeapon=true, ESPArrows=true, ESPSkeleton=true,
+    ESPShowSheriff=true, ESPShowInnocents=true,
+    ESPFill=true, ESPFillTransparency=0.7,
+    Hitmark=true, KillFeed=true,
+    Cross=false, CrossStyle="Sharingan", CrossSize=32, CrossFollowMouse=true,
+    Sub1msSnap=true, DynamicSnapSpeed=true, AdaptiveSnapDist=true,
+    ProgressiveReturn=true, ZeroReturnTeleport=true, MultiSnapSteps=true,
+    RageBurstMode=true,
+    AntiVoid=true, AntiVoidYThresh=-5, AntiVoidLift=20,
+    OneShotPerfect=true, OneShotLead=true, OneShotGravity=true, OneShotAdaptive=true,
+    OneShotIterations=12, OneShotConverge=true, RetryMiss=true,
+    ScreenStretch=true, ScreenStretchPreset="21:9 Wide", ScreenStretchFOV=95,
+    Theme="Blood",
 }
-function HB_ApplyPreset(name)
-    local preset = HB_Presets[name]
-    if not preset then return end
-    for k, v in pairs_(preset) do S[k] = v end
+
+function HB_ApplyUltra()
+    for k, v in pairs_(HB_ULTRA) do S[k] = v end
     if Flick then
         Flick.oneShot = true; Flick.retriesLeft = 0
-        if name == "PRO_CLIP" then
-            Flick.proMode = true
-            Flick.snapDur = 0.026; Flick.holdDur = 0.070
-            Flick.verifyWait = 0.30; Flick.returnDur = 0.080
-            Flick.overshootPct = 0.055; Flick.adaptiveOvershoot = true
-            Flick.microJitter = 0.10; Flick.microJitterRate = 42
-            Flick.preDipEnabled = true; Flick.preDipDur = 0.020; Flick.preDipAmount = 0.012
-            Flick.fireAtPeak = true; Flick.reactionDelay = 0.045
-            Flick.recoilEnabled = true; Flick.recoilAmount = 0.018; Flick.recoilTime = 0.050
-            Flick.postShotSettle = 0.035
-        elseif name == "RAGE_PRO" or name == "RAGE_MAX" or name == "RAGE_TRYHARD" then
-            Flick.proMode = false
-            Flick.snapDur = 0.014; Flick.holdDur = 0.030
-            Flick.verifyWait = 0.150; Flick.returnDur = 0.035
-            Flick.overshootPct = 0.010; Flick.adaptiveOvershoot = false
-            Flick.microJitter = 0; Flick.microJitterRate = 10
-            Flick.preDipEnabled = false; Flick.fireAtPeak = true
-            Flick.reactionDelay = 0
-            Flick.recoilEnabled = false; Flick.postShotSettle = 0
-        elseif name == "TRYHARD" then
-            Flick.proMode = true
-            Flick.snapDur = 0.024; Flick.holdDur = 0.065
-            Flick.overshootPct = 0.048; Flick.adaptiveOvershoot = true
-            Flick.microJitter = 0.08
-            Flick.preDipEnabled = true; Flick.fireAtPeak = true
-            Flick.reactionDelay = 0.040
-            Flick.recoilEnabled = true; Flick.recoilAmount = 0.018
-            Flick.postShotSettle = 0.030
-        end
+        Flick.proMode = false
+        Flick.snapDur = 0.001
+        Flick.holdDur = 0.001
+        Flick.verifyWait = 0.150
+        Flick.returnDur = 0.001
+        Flick.overshootPct = 0
+        Flick.adaptiveOvershoot = false
+        Flick.microJitter = 0
+        Flick.microJitterRate = 10
+        Flick.preDipEnabled = false
+        Flick.preDipDur = 0
+        Flick.preDipAmount = 0
+        Flick.fireAtPeak = true
+        Flick.reactionDelay = 0
+        Flick.recoilEnabled = false
+        Flick.recoilAmount = 0
+        Flick.postShotSettle = 0
     end
     if S.REV_HUMAN then
         S.REV_HUMAN.warmup=false S.REV_HUMAN.cooldown=false
         S.REV_HUMAN.fatigue=false S.REV_HUMAN.cognitive=false S.REV_HUMAN.emotion=false
         S.REV_HUMAN.squad=false S.REV_HUMAN.reputation=false S.REV_HUMAN.altDetect=false
-        if name == "RAGE_MAX" or name == "RAGE_TRYHARD" or name == "RAGE_PRO" then
-            S.REV_HUMAN.persona = "aggressive"; S.REV_HUMAN.personaStrength = 0.0
-        elseif name == "PRO_CLIP" then
-            S.REV_HUMAN.persona = "calculista"; S.REV_HUMAN.personaStrength = 0.5
+        S.REV_HUMAN.persona = "aggressive"; S.REV_HUMAN.personaStrength = 0.0
+    end
+    if S.REV_AI then
+        for k, _ in pairs_(S.REV_AI) do
+            if type(S.REV_AI[k]) == "boolean" then S.REV_AI[k] = false end
         end
     end
-    if name == "RAGE_TRYHARD" and Themes.Blood then Palette.Accent = Themes.Blood end
+    if S.REV_STEALTH then
+        for k, _ in pairs_(S.REV_STEALTH) do
+            if type(S.REV_STEALTH[k]) == "boolean" then S.REV_STEALTH[k] = false end
+        end
+    end
+    if S.REV_MAD then
+        for k, _ in pairs_(S.REV_MAD) do
+            if type(S.REV_MAD[k]) == "boolean" then S.REV_MAD[k] = false end
+        end
+    end
+    if S.REV_SOCIAL then
+        for k, _ in pairs_(S.REV_SOCIAL) do
+            if type(S.REV_SOCIAL[k]) == "boolean" then S.REV_SOCIAL[k] = false end
+        end
+    end
+    if Themes.Blood then Palette.Accent = Themes.Blood end
+    HB_ForceRestoreCamera()
     HB_ApplyScreenStretch()
     if HB_BuildCrosshair then HB_BuildCrosshair() end
+    UIS.MouseIconEnabled = true
 end
-function HB_PresetTryhard() HB_ApplyPreset("TRYHARD") end
-function HB_PresetRageMax() HB_ApplyPreset("RAGE_MAX") end
-function HB_PresetReset()
-    if Flick then
-        Flick.snapDur = 0.014; Flick.holdDur = 0.030
-        Flick.verifyWait = 0.150; Flick.returnDur = 0.035
-        Flick.retriesLeft = 0
-        Flick.proMode = false; Flick.oneShot = true
-        Flick.overshootPct = 0.010; Flick.adaptiveOvershoot = false
-        Flick.microJitter = 0; Flick.microJitterRate = 10
-        Flick.preDipEnabled = false; Flick.fireAtPeak = true
-        Flick.reactionDelay = 0
-        Flick.recoilEnabled = false; Flick.postShotSettle = 0
-    end
-    S.AlignTol=1 S.AimSmooth=0
-    S.FakeMiss=false S.RateLimit=false S.Humanize=true S.AntiFlickBlock=false
-    S.TrigOn=false S.ESP=true S.Chams=true S.Radar=true
-    S.TimelinePredictor=true
-    S.WallCheck=false S.CycleEnabled=false S.MaxCycles=1
-    S.FlickMaxDist=5000 S.FlickCameraMode="Off"
-    S.HeadOnlyLock=true S.PostKillDelay=false
-    S.OneShotPerfect=true S.OneShotLead=true S.OneShotGravity=true S.OneShotAdaptive=true
-    S.Cross=false S.CrossStyle="Sharingan" S.CrossSize=24 S.CrossFollowMouse=true
-    HB_ResetScreenStretch()
-    HB_ForceRestoreCamera()
-    if HB_BuildCrosshair then HB_BuildCrosshair() end
-end
+
+function HB_PresetTryhard() HB_ApplyUltra() end
+function HB_PresetRageMax() HB_ApplyUltra() end
+function HB_PresetReset()    HB_ApplyUltra() end
+function HB_ApplyPreset(_)   HB_ApplyUltra() end
 
 local HB_MLFinal = MetaLearnUpdate
 MetaLearnUpdate = function(perf)
@@ -3454,7 +3419,6 @@ MetaLearnUpdate = function(perf)
     if perf and perf > 0.5 then pcall(HB_PlayKillSound) else pcall(HB_PlayHitSound) end
 end
 
--- TRIGGER BOT
 local TriggerAccum = 0
 RS_Heartbeat:Connect(function(dt)
     if not S.TrigOn then return end
@@ -3521,8 +3485,8 @@ RS_Heartbeat:Connect(function()
                 if on1 and on2 and hs.Z > 0 and fs.Z > 0 then
                     local topY, botY = hs.Y, fs.Y; local hPx = abs(botY - topY); local wPx = hPx * 0.55; local cx = hs.X
                     e.box.Visible = S.ESPBox; e.box.Size = newUD2(0,wPx,0,hPx); e.box.Position = newUD2(0,cx-wPx*0.5,0,topY)
-                    e.stroke.Color = color; e.stroke.Thickness = S.ESPThick or 2
-                    e.fill.Visible = S.ESPFill; e.fill.BackgroundColor3 = color; e.fill.BackgroundTransparency = S.ESPFillTransparency or 0.8
+                    e.stroke.Color = color; e.stroke.Thickness = S.ESPThick or 5
+                    e.fill.Visible = S.ESPFill; e.fill.BackgroundColor3 = color; e.fill.BackgroundTransparency = S.ESPFillTransparency or 0.7
                     e.nameTag.Visible = S.ESPName; e.nameTag.Text = ESP_LABELS[role].." "..pl.Name
                     e.nameTag.TextColor3 = color; e.nameTag.Position = newUD2(0,-wPx*0.5,0,topY-38); e.nameTag.Size = newUD2(0,wPx*3,0,16)
                     local distStuds = (head.Position - myPos).Magnitude
@@ -3657,11 +3621,11 @@ RS_Heartbeat:Connect(function(dt)
         if HB_DBG.hitAttempts and HB_DBG.hitAttempts > 0 then
             acc = floor((HB_DBG.hitSuccess or 0) / HB_DBG.hitAttempts * 100)
         end
-        FLICK_COUNTER.Text = sformat("KILLS:%d | HIT:%d%% | SNAP:%dms | 1SHOT:%s | FOV:%d | LOCK:%s | CROSS:%s",
-            S.Kills, acc, floor((Flick.snapDur or 0)*1000),
-            S.OneShotPerfect and "ON" or "OFF", floor(Camera.FieldOfView),
-            HB_DBG.lastHitType or "none",
-            S.Cross and "ON" or "OFF")
+        FLICK_COUNTER.Text = sformat("💀 HACK MODE | 1MS | 12 ITER | 1 TIRO | KILLS:%d | HIT:%d%% | RETRY:%d | SKIP:%d | SNAP:%dms | WALL:%s | FOV:%d",
+            S.Kills, acc, HB_DBG.retries or 0, HB_DBG.wallSkips or 0,
+            floor((Flick.snapDur or 0)*1000),
+            S.WallCheck and "ON" or "OFF",
+            floor(Camera.FieldOfView))
     end
     if S.ShowCooldownVisual and COOLDOWN_BAR and COOLDOWN_FILL then
         COOLDOWN_BAR.Visible = true
@@ -3686,33 +3650,46 @@ RS_Heartbeat:Connect(function(dt)
             acc = floor((HB_DBG.hitSuccess or 0) / HB_DBG.hitAttempts * 100)
         end
         UI.StatsDisplay.Text = sformat(
-            "📊 v10.0 · ULTRA PRECISION\n\nKills: %d\nDeaths: %d\nStreak: %d\nBest: %d\nFPS: %.0f\nPing: %dms\n---\nHitrate: %d%%\nTentativas: %d\nSucessos: %d\nLock: %s\n---\nOneShot: %s\nLead: %s\nGrav: %s\nAdapt: %s\n---\nStretch: %s\nFOV: %d (%s)\nCrosshair: %s (%s)\nSlot1: %s",
+            "💀 v10.1 · HACK MODE · 1MS · 12 ITER · 1 TIRO · WALL ON\n\nKills: %d\nDeaths: %d\nStreak: %d\nBest: %d\nFPS: %.0f\nPing: %dms\n---\nHitrate: %d%%\nTentativas: %d\nSucessos: %d\nRetries: %d\nWallSkips: %d\nLastHit: %s\n---\nOneShot: %s\nLead: %s\nGrav: %s\nAdapt: %s\nRetryMiss: %s\nIterações: %d\n---\nWallCheck: %s (TRAVADO)\nCrosshair: %s\nFOV: %d (%s)\nTheme: %s\nCycle: %s x%d\nAntiVoid: Y%d Lift%d\nTrigOn: %s\nSlot1: %s",
             S.Kills, S.Deaths, S.Streak or 0, S.BestStreak or 0,
             fps, ping, acc,
             HB_DBG.hitAttempts or 0, HB_DBG.hitSuccess or 0,
+            HB_DBG.retries or 0, HB_DBG.wallSkips or 0,
             HB_DBG.lastHitType or "none",
             S.OneShotPerfect and "ON" or "OFF",
             S.OneShotLead and "ON" or "OFF",
             S.OneShotGravity and "ON" or "OFF",
             S.OneShotAdaptive and "ON" or "OFF",
-            S.ScreenStretch and "ON" or "OFF",
+            S.RetryMiss and "ON" or "OFF",
+            S.OneShotIterations or 12,
+            S.WallCheck and "ON" or "OFF",
+            S.Cross and "ON" or "OFF",
             floor(Camera.FieldOfView), S.ScreenStretchPreset or "Normal",
-            S.Cross and "ON" or "OFF", S.CrossStyle or "-",
+            S.Theme or "Blood",
+            S.CycleEnabled and "ON" or "OFF", S.MaxCycles or 3,
+            S.AntiVoidYThresh or -5, S.AntiVoidLift or 20,
+            S.TrigOn and "ON" or "OFF",
             S.PullSlot1 and "ON" or "OFF")
     end
     if DEBUG_HUD and DEBUG_HUD.Visible then
         DEBUG_HUD.Text = sformat(
-            "⚡ HELLBORN v10.0 · ULTRA PRECISION\nCache:%d | Murderers:%d | Sheriffs:%d\nSnap:%dms Ret:%dms Ver:%dms\nOneShot:%s Lead:%s Grav:%s Adapt:%s\nAttempts:%d Success:%d\nLOCK TYPE: %s\nFired:%s Verified:%s\nCross:%s(%s %dpx)\nStretch:%s FOV:%d(%s)\nPing smooth:%.0fms\nFlicks:%d Kills:%d\nFPS:%.0f",
+            "💀 HELLBORN v10.1 · HACK MODE · 1MS · 12 ITER · 1 TIRO · WALL ON\nCache:%d | Murderers:%d | Sheriffs:%d\nSnap:%dms Hold:%dms Ret:%dms Ver:%dms\nOneShot:%s Lead:%s Grav:%s Adapt:%s Retry:%s\nIterações:%d\nAttempts:%d Success:%d Retries:%d WallSkips:%d\nLOCK TYPE: %s\nFired:%s Verified:%s\nWallCheck:%s (TRAVADO) Cross:%s(%s %dpx)\nStretch:%s FOV:%d(%s)\nPing smooth:%.0fms\nKills:%d | Cycle:%s x%d\nMaxDist:%d Kalman:%dms\nTrigOn:%s Rad:%d CD:%.2f\nAntiVoid Y:%d Lift:%d\nFPS:%.0f",
             #Cache.List, HB_DBG.murders or 0, HB_DBG.sheriffs or 0,
-            floor((Flick.snapDur or 0)*1000), floor((Flick.returnDur or 0)*1000), floor((Flick.verifyWait or 0)*1000),
-            tostring(S.OneShotPerfect), tostring(S.OneShotLead), tostring(S.OneShotGravity), tostring(S.OneShotAdaptive),
+            floor((Flick.snapDur or 0)*1000), floor((Flick.holdDur or 0)*1000),
+            floor((Flick.returnDur or 0)*1000), floor((Flick.verifyWait or 0)*1000),
+            tostring(S.OneShotPerfect), tostring(S.OneShotLead), tostring(S.OneShotGravity), tostring(S.OneShotAdaptive), tostring(S.RetryMiss),
+            S.OneShotIterations or 12,
             HB_DBG.hitAttempts or 0, HB_DBG.hitSuccess or 0,
+            HB_DBG.retries or 0, HB_DBG.wallSkips or 0,
             tostring(HB_DBG.lastHitType or "none"),
             tostring(Flick.fired), tostring(Flick.hitVerified),
-            tostring(S.Cross), tostring(S.CrossStyle), S.CrossSize,
-            tostring(S.ScreenStretch), floor(Camera.FieldOfView), S.ScreenStretchPreset or "Normal",
+            tostring(S.WallCheck), tostring(S.Cross), tostring(S.CrossStyle), S.CrossSize,
+            tostring(S.ScreenStretch), floor(Camera.FieldOfView), S.ScreenStretchPreset or "21:9 Wide",
             HB_GetSmoothedPing() * 1000,
-            S.Kills, S.Kills,
+            S.Kills, tostring(S.CycleEnabled), S.MaxCycles or 3,
+            S.FlickMaxDist or 9999, floor((S.KalmanPredTime or 0.01) * 1000),
+            tostring(S.TrigOn), S.TrigRad or 300, S.TrigCD or 0.01,
+            S.AntiVoidYThresh or -5, S.AntiVoidLift or 20,
             FPS.cur or 60)
     end
 end)
@@ -3731,16 +3708,39 @@ RS_Heartbeat:Connect(function(dt)
     end
 end)
 
--- BOOT
+-- ═══════════════════════════════════════════════════════════
+-- 💀 BOOT HACK MODE
+-- ═══════════════════════════════════════════════════════════
 S.TrigOn = false
 UI.switchMain("AIM")
 UI_main.Visible = true
-HB_AutoSaveLoad()
-if S.ScreenStretch then HB_ApplyScreenStretch() end
+HB_ApplyUltra()
+S.WallCheck = true
+S.Cross = false
+S.CycleEnabled = true
+S.MaxCycles = 3
+S.OneShotIterations = 12
+S.KalmanPredTime = 0.01
+S.ESPThick = 5
+S.FPSAdaptive = false
+S.TrigOn = false
+S.TrigRad = 300
+S.TrigCD = 0.01
+S.AntiVoidYThresh = -5
+S.AntiVoidLift = 20
+S.ScreenStretchPreset = "21:9 Wide"
+S.ScreenStretchFOV = 95
+S.ScreenStretch = true
+S.RetryMiss = true
+if Themes.Blood then Palette.Accent = Themes.Blood end
+HB_ForceRestoreCamera()
+HB_ApplyScreenStretch()
+if HB_BuildCrosshair then HB_BuildCrosshair() end
+UIS.MouseIconEnabled = true
 task.spawn(function() task.wait(1); HB_ApplyVisuals() end)
 game:BindToClose(function() HB_RemoveVisuals() end)
-HB_Toast("HELLBORN v10.0 · ULTRA PRECISION carregado", "success")
-print("[HELLBORN] BLOCO 2/2 OK — ULTRA PRECISION + SHARINGAN + STRETCH em VISUAL")
+HB_Toast("💀 HACK MODE · Wall ON · Cross OFF · Trig OFF · 1ms · 12 iter · 1 TIRO · HRP rotation · FOV 95", "danger")
+print("[HELLBORN] COMPLETO — HACK MODE · Wall ON · Cross OFF · Trig OFF · 1ms · 12 iter · 1 TIRO · HRP ROT · FOV 95")
 _G.HB_KILL = function()
     _G.HB_ALIVE = nil
     if _G.HB and _G.HB.CONNECTIONS then
@@ -3751,3 +3751,476 @@ _G.HB_KILL = function()
     pcall(function() Camera.FieldOfView = 70 end)
     pcall(function() UIS.MouseIconEnabled = true end)
 end
+--==============================================================
+-- HB MAX RAGE — BLOCO ÚNICO (PATCH + BOOT + TRAVA)
+-- Cola no FINAL do script existente. Substitui funções em runtime.
+-- 1 TIRO · WALL CHECK TRAVADO · 15 ITER · HRP ROT · MULTIPOINT
+--==============================================================
+
+-- [1] SILENT FIRE — HRP ROTATION (crítico p/ MM2) + 1 bala
+function SilentFire(tool, aimPos, bypassCooldown)
+    if not tool or not aimPos or not tool.Parent then return false end
+    local lpCh = LP.Character; if not lpCh then return false end
+    if tool.Parent ~= lpCh then
+        local eq = HB_EquipAndWait(tool, 0.5)
+        if not eq or eq ~= tool then
+            local s1 = FindSlot1Tool()
+            if s1 then eq = HB_EquipAndWait(s1, 0.5) end
+            if not eq then return false end
+            tool = eq
+        end
+    end
+    local now = tick()
+    if not bypassCooldown and now - Sil.lastFire < 0.03 then return false end
+    Sil.lastFire = now
+    local hum = lpCh:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    local head = lpCh:FindFirstChild("Head")
+    local hrp  = lpCh:FindFirstChild("HumanoidRootPart")
+    local handle = tool:FindFirstChild("Handle")
+    local fireFromPos = (handle and handle.Position) or (head and head.Position) or Camera.CFrame.Position
+    local oldAuto = hum.AutoRotate
+    local oldHeadCF = head and head.CFrame
+    local oldHrpCF  = hrp and hrp.CFrame
+    local oldHandleCF = handle and handle.CFrame
+    hum.AutoRotate = false
+    if hrp    then pcall(function() hrp.CFrame    = lookAt(hrp.Position,    aimPos) end) end
+    if handle then pcall(function() handle.CFrame = lookAt(handle.CFrame.Position, aimPos) end) end
+    if head   then pcall(function() head.CFrame   = lookAt(head.CFrame.Position,   aimPos) end) end
+    local fakePart
+    if Mouse then
+        pcall(function()
+            fakePart = Instance_new("Part")
+            fakePart.Size = newV3(0.1, 0.1, 0.1); fakePart.Transparency = 1
+            fakePart.CanCollide = false; fakePart.Anchored = true
+            fakePart.CFrame = newCF(aimPos); fakePart.Parent = workspace
+            Mouse.Target = fakePart
+        end)
+    end
+    local ok = pcall(function() tool:Activate() end)
+    if handle and oldHandleCF then handle.CFrame = oldHandleCF end
+    if head and oldHeadCF then pcall(function() head.CFrame = oldHeadCF end) end
+    if hrp  and oldHrpCF  then pcall(function() hrp.CFrame  = oldHrpCF  end) end
+    hum.AutoRotate = oldAuto
+    if fireFromPos and HB_Tracer and HB_Tracer.enabled then
+        if (not IsHitscan(tool)) or HB_Tracer.ignoreHitscan then
+            spawn(HB_SpawnTracer, fireFromPos, aimPos)
+        end
+    end
+    if fakePart then delay(0.05, function() if fakePart then fakePart:Destroy() end end) end
+    if ok then Weapon.lastFireTime[tool] = now end
+    return ok
+end
+
+-- [2] LEAD ITERATIVO — 15 PASS · CONVERGÊNCIA < 0.003 · FPS-AWARE · HITSCAN-AWARE
+function HB_CalcLeadPosIterative(tp, ch, camPos, tool)
+    if not ch or not ch.Parent then return nil end
+    local head = ch:FindFirstChild("Head")
+    local hrp  = ch:FindFirstChild("HumanoidRootPart")
+    if not head then return nil end
+    local h = Hst[tp]
+    local vel = (h and h.vel) or (hrp and hrp.AssemblyLinearVelocity) or v3zero
+    local acc = (h and h.acc) or v3zero
+    local spd = GetWeaponSpeed(tool) or 2500
+    local ping = HB_GetSmoothedPing()
+    local basePos = head.Position
+    local finalPos = basePos
+    local iterations = S.OneShotIterations or 15
+    local frameTime = 1 / math.max(FPS.cur or 60, 30)
+    local hitscan = IsHitscan(tool)
+    for iter = 1, iterations do
+        local dist = (finalPos - camPos).Magnitude
+        local travel = hitscan and 0 or (dist / spd)
+        local t = travel + (ping * 0.5) + frameTime
+        local targetPoint = basePos + vel * t
+        if S.OneShotLead and acc.Magnitude > 0.1 then
+            targetPoint = targetPoint + acc * (0.5 * t * t)
+        end
+        if S.OneShotGravity and not hitscan then
+            targetPoint = newV3(targetPoint.X, targetPoint.Y + 0.5 * 196.2 * t * t, targetPoint.Z)
+        end
+        if h and h.dirChanges > 3 and h.lastDirChangeT and (tick() - h.lastDirChangeT) < 0.4 then
+            targetPoint = targetPoint + h.vel * 0.012
+        end
+        if h and h.isCrouch and S.HeadOnlyLock then
+            targetPoint = newV3(targetPoint.X, targetPoint.Y - 0.35, targetPoint.Z)
+        elseif h and h.isJumping and S.HeadOnlyLock then
+            targetPoint = newV3(targetPoint.X, targetPoint.Y + 0.25, targetPoint.Z)
+        end
+        if S.OneShotAdaptive then
+            local mem = OneShotMem[tp]
+            if mem and mem.offset then
+                local age = tick() - mem.t
+                local decay = max(0, 1 - age / 20)
+                targetPoint = targetPoint + mem.offset * decay
+            end
+        end
+        if (targetPoint - finalPos).Magnitude < 0.003 then finalPos = targetPoint; break end
+        finalPos = targetPoint
+    end
+    local finalDist = (finalPos - camPos).Magnitude
+    local finalT = (hitscan and 0 or (finalDist / spd)) + (ping * 0.5) + frameTime
+    return finalPos, finalT, finalDist
+end
+
+-- [3] VERIFY LOS — RAYCAST INCLUDE (só no char alvo)
+function HB_VerifyLOS(ch, camPos, aim)
+    if not ch or not ch.Parent then return aim, false, nil end
+    local params = RaycastParams.new()
+    params.FilterType = E_RFT_INCLUDE
+    params.FilterDescendantsInstances = {ch}
+    params.IgnoreWater = true
+    params.RespectCanCollide = false
+    local result = workspace:Raycast(camPos, aim - camPos, params)
+    if result and result.Instance then
+        return result.Position, true, result.Instance
+    end
+    return aim, false, nil
+end
+
+-- [4] MULTIPOINT LOS — 51 PONTOS
+function HB_MultiPointAim(ch, camPos, basePoint)
+    if not ch or not ch.Parent then return basePoint, false, nil end
+    local offsets = {
+        Vector3.new(0, 0, 0),
+        Vector3.new(0.08, 0, 0),    Vector3.new(-0.08, 0, 0),
+        Vector3.new(0, 0.08, 0),    Vector3.new(0, -0.08, 0),
+        Vector3.new(0, 0, 0.08),    Vector3.new(0, 0, -0.08),
+        Vector3.new(0.16, 0, 0),    Vector3.new(-0.16, 0, 0),
+        Vector3.new(0, 0.16, 0),    Vector3.new(0, -0.16, 0),
+        Vector3.new(0, 0, 0.16),    Vector3.new(0, 0, -0.16),
+        Vector3.new(0.25, 0, 0),    Vector3.new(-0.25, 0, 0),
+        Vector3.new(0, 0.25, 0),    Vector3.new(0, -0.25, 0),
+        Vector3.new(0, 0, 0.25),    Vector3.new(0, 0, -0.25),
+        Vector3.new(0.35, 0, 0),    Vector3.new(-0.35, 0, 0),
+        Vector3.new(0, 0.35, 0),    Vector3.new(0, -0.35, 0),
+        Vector3.new(0, 0, 0.35),    Vector3.new(0, 0, -0.35),
+        Vector3.new(0.5, 0, 0),     Vector3.new(-0.5, 0, 0),
+        Vector3.new(0, 0.5, 0),     Vector3.new(0, -0.5, 0),
+        Vector3.new(0, 0, 0.5),     Vector3.new(0, 0, -0.5),
+        Vector3.new(0.7, 0, 0),     Vector3.new(-0.7, 0, 0),
+        Vector3.new(0, 0.7, 0),     Vector3.new(0, -0.7, 0),
+        Vector3.new(0.16, 0.16, 0), Vector3.new(-0.16, 0.16, 0),
+        Vector3.new(0.16, -0.16, 0),Vector3.new(-0.16, -0.16, 0),
+        Vector3.new(0.16, 0, 0.16), Vector3.new(-0.16, 0, 0.16),
+        Vector3.new(0.35, 0.35, 0), Vector3.new(-0.35, 0.35, 0),
+        Vector3.new(0.35, -0.35, 0),Vector3.new(-0.35, -0.35, 0),
+        Vector3.new(0, 0.35, 0.35), Vector3.new(0, 0.35, -0.35),
+        Vector3.new(0, -0.35, 0.35),Vector3.new(0, -0.35, -0.35),
+        Vector3.new(0.5, 0.5, 0),   Vector3.new(-0.5, 0.5, 0),
+    }
+    for i = 1, #offsets do
+        local testPoint = basePoint + offsets[i]
+        local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, camPos, testPoint)
+        if hasLOS then return hitPos, true, hitPart end
+    end
+    return basePoint, false, nil
+end
+
+-- [5] HAS LOS FROM→TO — RAYCAST EXCLUDE
+function HB_HasLOSFromTo(fromPos, toPos, targetChar)
+    if not fromPos or not toPos then return false end
+    local ignore = {LP.Character}
+    if targetChar then ignore[#ignore+1] = targetChar end
+    local params = RaycastParams.new()
+    params.FilterType = E_RFT_EXCLUDE
+    params.FilterDescendantsInstances = ignore
+    params.IgnoreWater = true
+    params.RespectCanCollide = false
+    return workspace:Raycast(fromPos, toPos - fromPos, params) == nil
+end
+
+-- [6] FIND AIM WITH LOS — 37 OFFSETS
+function HB_FindAimWithLOS(ch, fromPos, baseAim)
+    if not ch or not ch.Parent then return baseAim, false end
+    if HB_HasLOSFromTo(fromPos, baseAim, ch) then return baseAim, true end
+    local offsets = {
+        Vector3.new(0.25, 0, 0),  Vector3.new(-0.25, 0, 0),
+        Vector3.new(0, 0.25, 0),  Vector3.new(0, -0.25, 0),
+        Vector3.new(0, 0, 0.25),  Vector3.new(0, 0, -0.25),
+        Vector3.new(0.5, 0, 0),   Vector3.new(-0.5, 0, 0),
+        Vector3.new(0, 0.5, 0),   Vector3.new(0, -0.5, 0),
+        Vector3.new(0, 0, 0.5),   Vector3.new(0, 0, -0.5),
+        Vector3.new(0.75, 0, 0),  Vector3.new(-0.75, 0, 0),
+        Vector3.new(0, 0.75, 0),  Vector3.new(0, -0.75, 0),
+        Vector3.new(0, 0, 0.75),  Vector3.new(0, 0, -0.75),
+        Vector3.new(1.0, 0, 0),   Vector3.new(-1.0, 0, 0),
+        Vector3.new(0, 1.0, 0),   Vector3.new(0, -1.0, 0),
+        Vector3.new(0.25, 0.25, 0),Vector3.new(-0.25, 0.25, 0),
+        Vector3.new(0.25, -0.25, 0),Vector3.new(-0.25, -0.25, 0),
+        Vector3.new(0, 0.25, 0.25),Vector3.new(0, 0.25, -0.25),
+        Vector3.new(0, -0.25, 0.25),Vector3.new(0, -0.25, -0.25),
+        Vector3.new(0.5, 0.5, 0),  Vector3.new(-0.5, 0.5, 0),
+        Vector3.new(0.5, -0.5, 0), Vector3.new(-0.5, -0.5, 0),
+        Vector3.new(1.2, 0, 0),   Vector3.new(-1.2, 0, 0),
+        Vector3.new(0, 1.2, 0),   Vector3.new(0, -1.2, 0),
+        Vector3.new(1.2, 0.6, 0), Vector3.new(-1.2, 0.6, 0),
+    }
+    for i = 1, #offsets do
+        local testAim = baseAim + offsets[i]
+        if HB_HasLOSFromTo(fromPos, testAim, ch) then return testAim, true end
+    end
+    return baseAim, false
+end
+
+-- [7] PERFECT AIM — HEAD → HEAD GRID → HRP → TORSO → MULTIPOINT → NIL (não atira sem LOS)
+function HB_PerfectAim(tp, ch, camPos, tool, hum)
+    if not ch or not ch.Parent or not hum or hum.Health <= 0 then return nil end
+    local head = ch:FindFirstChild("Head")
+    local hrp  = ch:FindFirstChild("HumanoidRootPart")
+    local upperTorso = ch:FindFirstChild("UpperTorso") or ch:FindFirstChild("Torso")
+    if not head then return nil end
+    local leadAim, t, dist = HB_CalcLeadPosIterative(tp, ch, camPos, tool)
+    if not leadAim then return nil end
+    local fireOrigin = camPos
+    local lpHead = Cache.Heads[LP]
+    if lpHead then fireOrigin = lpHead.Position end
+    local function tryPoint(p)
+        local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, fireOrigin, p)
+        if hasLOS then return hitPos, hitPart end
+        return nil
+    end
+    local p, part = tryPoint(leadAim)
+    if p then return p, t, dist, (part and part.Name) or "head" end
+    p, part = tryPoint(head.Position)
+    if p then return p, t, dist, "head_static" end
+    local grid = {
+        Vector3.new(0.15, 0, 0),   Vector3.new(-0.15, 0, 0),
+        Vector3.new(0, 0.15, 0),   Vector3.new(0, -0.15, 0),
+        Vector3.new(0, 0, 0.15),   Vector3.new(0, 0, -0.15),
+        Vector3.new(0.3, 0, 0),    Vector3.new(-0.3, 0, 0),
+        Vector3.new(0, 0.3, 0),    Vector3.new(0, -0.3, 0),
+        Vector3.new(0, 0, 0.3),    Vector3.new(0, 0, -0.3),
+        Vector3.new(0.5, 0, 0),    Vector3.new(-0.5, 0, 0),
+        Vector3.new(0, 0.5, 0),    Vector3.new(0, -0.5, 0),
+        Vector3.new(0.15, 0.15, 0),Vector3.new(-0.15, 0.15, 0),
+        Vector3.new(0.15, -0.15, 0),Vector3.new(-0.15, -0.15, 0),
+        Vector3.new(0.3, 0.3, 0),  Vector3.new(-0.3, 0.3, 0),
+        Vector3.new(0.3, -0.3, 0), Vector3.new(-0.3, -0.3, 0),
+    }
+    for i = 1, #grid do
+        p = tryPoint(head.Position + grid[i])
+        if p then return p, t, dist, "head_grid" end
+    end
+    if hrp then
+        local v = (Hst[tp] and Hst[tp].vel) or hrp.AssemblyLinearVelocity or v3zero
+        local hrpLead = hrp.Position + v * (t or 0.05)
+        p = tryPoint(hrpLead)
+        if p then return p, t, dist, "hrp" end
+        p = tryPoint(hrp.Position)
+        if p then return p, t, dist, "hrp_static" end
+    end
+    if upperTorso then
+        local v = (Hst[tp] and Hst[tp].vel) or v3zero
+        local upLead = upperTorso.Position + v * (t or 0.05)
+        p = tryPoint(upLead)
+        if p then return p, t, dist, "upper_torso" end
+        p = tryPoint(upperTorso.Position)
+        if p then return p, t, dist, "upper_torso_static" end
+    end
+    local mpAim, mpLOS = HB_MultiPointAim(ch, fireOrigin, leadAim)
+    if mpLOS then return mpAim, t, dist, "multipoint" end
+    return nil
+end
+
+-- [8] PERFECT SHOT — 1 TIRO · WALL CHECK OBRIGATÓRIO · SEM RETRY
+function HB_PerfectShot(tp, ch, hum, camPos, tool)
+    if not tool or not ch or not hum then return false end
+    if hum.Health <= 0 or not hum.Parent then return true end
+    local head = ch:FindFirstChild("Head")
+    if not head then return false end
+    local aim, t, dist, hitType = HB_PerfectAim(tp, ch, camPos, tool, hum)
+    if not aim then
+        HB_DBG.wallSkips = (HB_DBG.wallSkips or 0) + 1
+        return false
+    end
+    local lpHead = Cache.Heads[LP]
+    local fireOrigin = lpHead and lpHead.Position or camPos
+    local losAim, hasLOS = HB_FindAimWithLOS(ch, fireOrigin, aim)
+    if not hasLOS then
+        HB_DBG.wallSkips = (HB_DBG.wallSkips or 0) + 1
+        return false
+    end
+    aim = losAim
+    local hpBefore = hum.Health
+    HB_DBG.hitAttempts = (HB_DBG.hitAttempts or 0) + 1
+    HB_DBG.lastHitType = hitType or "none"
+    local fired = false
+    for equipTry = 1, 5 do
+        local ok = SilentFire(tool, aim, true)
+        if ok then fired = true; break end
+        task.wait(0.02)
+    end
+    if not fired then return false end
+    local verifyStart = tick()
+    while tick() - verifyStart < 0.25 do
+        RS_Heartbeat:Wait()
+        if not hum.Parent or hum.Health < hpBefore then
+            HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
+            OneShotMem[tp] = nil
+            return true
+        end
+    end
+    local lastMissOffset = head.Position - aim
+    if S.OneShotAdaptive and lastMissOffset then
+        local prev = OneShotMem[tp]
+        if prev and prev.offset then
+            local age = tick() - prev.t
+            local decayFactor = max(0.4, 1 - age / 15)
+            OneShotMem[tp] = {offset = prev.offset * decayFactor * 0.5 + lastMissOffset * 0.5, t = tick()}
+        else
+            OneShotMem[tp] = {offset = lastMissOffset * 0.6, t = tick()}
+        end
+    end
+    return false
+end
+
+-- [9] FIND MURDER QUEUE — WALL CHECK OBRIGATÓRIO NA SELEÇÃO
+function FindMurderQueue()
+    local origin
+    local lpHrp = Cache.HRPs[LP]
+    if lpHrp then origin = lpHrp.Position else origin = Camera.CFrame.Position end
+    local maxDist = S.FlickMaxDist or 9999
+    local cands = {}
+    local m, s, i_count = 0, 0, 0
+    for i = 1, #Cache.List do
+        local p = Cache.List[i]
+        if p ~= LP then
+            local role = GetRole(p)
+            if role == "Murderer" then m = m + 1 elseif role == "Sheriff" then s = s + 1 else i_count = i_count + 1 end
+            if role == "Murderer" then
+                local ch = Cache.Chars[p]; local hrp = Cache.HRPs[p]
+                if ch and ch.Parent and hrp then
+                    local hum = ch:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        local d = (hrp.Position - origin).Magnitude
+                        if d <= maxDist and HB_HasLineOfSight(ch) then
+                            cands[#cands+1] = {player=p, char=ch, hum=hum, dist=d}
+                        end
+                    end
+                end
+            end
+        end
+    end
+    HB_DBG.murders = m; HB_DBG.sheriffs = s; HB_DBG.innocents = i_count
+    HB_DBG.lastQueue = #cands
+    tsort(cands, function(a,b) return a.dist < b.dist end)
+    return cands
+end
+
+-- [10] HB_APPLY_ULTRA — TRAVA WALL + 1 TIRO + 15 ITER
+function HB_ApplyUltra()
+    for k, v in pairs_(HB_ULTRA) do S[k] = v end
+    S.WallCheck = true
+    S.RetryMiss = false
+    S.OneShotIterations = 15
+    S.OneShotPerfect = true
+    S.OneShotLead = true
+    S.OneShotGravity = true
+    S.OneShotAdaptive = true
+    S.FlickMaxDist = 9999
+    if Flick then
+        Flick.oneShot = true
+        Flick.retriesLeft = 0
+        Flick.proMode = false
+        Flick.snapDur = 0.001
+        Flick.holdDur = 0.001
+        Flick.verifyWait = 0.250
+        Flick.returnDur = 0.001
+        Flick.overshootPct = 0
+        Flick.adaptiveOvershoot = false
+        Flick.microJitter = 0
+        Flick.microJitterRate = 10
+        Flick.preDipEnabled = false
+        Flick.preDipDur = 0
+        Flick.preDipAmount = 0
+        Flick.fireAtPeak = true
+        Flick.reactionDelay = 0
+        Flick.recoilEnabled = false
+        Flick.recoilAmount = 0
+        Flick.postShotSettle = 0
+    end
+    if S.REV_HUMAN then
+        S.REV_HUMAN.warmup=false S.REV_HUMAN.cooldown=false
+        S.REV_HUMAN.fatigue=false S.REV_HUMAN.cognitive=false S.REV_HUMAN.emotion=false
+        S.REV_HUMAN.squad=false S.REV_HUMAN.reputation=false S.REV_HUMAN.altDetect=false
+        S.REV_HUMAN.persona = "aggressive"; S.REV_HUMAN.personaStrength = 0.0
+    end
+    if S.REV_AI then
+        for k, _ in pairs_(S.REV_AI) do
+            if type(S.REV_AI[k]) == "boolean" then S.REV_AI[k] = false end
+        end
+    end
+    if S.REV_STEALTH then
+        for k, _ in pairs_(S.REV_STEALTH) do
+            if type(S.REV_STEALTH[k]) == "boolean" then S.REV_STEALTH[k] = false end
+        end
+    end
+    if S.REV_MAD then
+        for k, _ in pairs_(S.REV_MAD) do
+            if type(S.REV_MAD[k]) == "boolean" then S.REV_MAD[k] = false end
+        end
+    end
+    if S.REV_SOCIAL then
+        for k, _ in pairs_(S.REV_SOCIAL) do
+            if type(S.REV_SOCIAL[k]) == "boolean" then S.REV_SOCIAL[k] = false end
+        end
+    end
+    if Themes.Blood then Palette.Accent = Themes.Blood end
+    HB_ForceRestoreCamera()
+    HB_ApplyScreenStretch()
+    if HB_BuildCrosshair then HB_BuildCrosshair() end
+    UIS.MouseIconEnabled = true
+end
+
+-- [11] BOOT MAX RAGE
+S.TrigOn = false
+if UI and UI.switchMain then UI.switchMain("AIM") end
+if UI_main then UI_main.Visible = true end
+HB_ApplyUltra()
+S.WallCheck = true
+S.Cross = false
+S.CycleEnabled = true
+S.MaxCycles = 3
+S.OneShotIterations = 15
+S.OneShotPerfect = true
+S.OneShotLead = true
+S.OneShotGravity = true
+S.OneShotAdaptive = true
+S.RetryMiss = false
+S.KalmanPredTime = 0.01
+S.ESPThick = 5
+S.FPSAdaptive = false
+S.TrigOn = false
+S.TrigRad = 300
+S.TrigCD = 0.01
+S.AntiVoidYThresh = -5
+S.AntiVoidLift = 20
+S.ScreenStretchPreset = "21:9 Wide"
+S.ScreenStretchFOV = 95
+S.ScreenStretch = true
+if Themes.Blood then Palette.Accent = Themes.Blood end
+HB_ForceRestoreCamera()
+HB_ApplyScreenStretch()
+if HB_BuildCrosshair then HB_BuildCrosshair() end
+UIS.MouseIconEnabled = true
+task.spawn(function() task.wait(1); if HB_ApplyVisuals then HB_ApplyVisuals() end end)
+game:BindToClose(function() if HB_RemoveVisuals then HB_RemoveVisuals() end end)
+if HB_Toast then
+    HB_Toast("💀 MAX RAGE · 1 TIRO · WALL TRAVADO · 15 ITER · HRP ROT · FOV 95", "danger")
+end
+print("[HELLBORN] MAX RAGE OK — 1 TIRO · WALL TRAVADO · 15 ITER · HRP ROT · MULTIPOINT · FOV 95")
+
+-- [12] KILLSWITCH FINAL (sobrescreve o antigo)
+_G.HB_KILL = function()
+    _G.HB_ALIVE = nil
+    if _G.HB and _G.HB.CONNECTIONS then
+        for i = 1, #_G.HB.CONNECTIONS do
+            pcall(function() _G.HB.CONNECTIONS[i]:Disconnect() end)
+        end
+    end
+    pcall(function() Camera.FieldOfView = 70 end)
+    pcall(function() UIS.MouseIconEnabled = true end)
+end
+
+print("[HB] PATCH MAX RAGE CARREGADO — funções substituídas em runtime")
