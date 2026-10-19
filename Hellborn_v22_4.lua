@@ -1,8 +1,8 @@
 --==============================================================
--- HELLBORN v10.1 — HACK MODE (ULTRA PRECISION · 1 SHOT · WALL ON)
--- HRP rotation · FPS-aware lead · Multipoint LOS · WallCheck no fire
+-- HELLBORN v11.1 — CORE (KALMAN 6D · LOS 2-RAY · STRAFE · PROJ SIM)
+-- 1 TIRO · WALL ON · 15 ITER · HRP ROT · MOUSE.HIT · MM2 AWARE
 --==============================================================
-if _G.HB_ALIVE then warn("[HELLBORN] Instância já rodando!"); return end
+if _G.HB_ALIVE then warn("[HELLBORN V11.1] Instância já rodando!"); return end
 _G.HB_ALIVE = true
 
 local tick = os.clock
@@ -24,7 +24,7 @@ local E_GOTHAM_BOLD, E_GOTHAM_BLACK = Enum.Font.GothamBold, Enum.Font.GothamBlac
 local E_CODE = Enum.Font.Code
 local E_TXT_LEFT, E_TXT_RIGHT, E_TXT_CENTER =
     Enum.TextXAlignment.Left, Enum.TextXAlignment.Right, Enum.TextXAlignment.Center
-local E_TXT_TOP = Enum.TextYAlignment.Top
+local E_TXT_TOP, E_TXT_MID = Enum.TextYAlignment.Top, Enum.TextYAlignment.Center
 local E_MOUSE1, E_MOUSEMOVE = Enum.UserInputType.MouseButton1, Enum.UserInputType.MouseMovement
 local E_KEYBOARD = Enum.UserInputType.Keyboard
 local E_CAM_SCRIPT, E_CAM_CUSTOM = Enum.CameraType.Scriptable, Enum.CameraType.Custom
@@ -40,6 +40,10 @@ local E_LAYOUT = Enum.SortOrder.LayoutOrder
 local E_ALIGN_CTR, E_ALIGN_VC = Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center
 local E_TRUNC_END = Enum.TextTruncate.AtEnd
 local E_HS_GETTING = Enum.HumanoidStateType.GettingUp
+local E_HS_FREEFALL = Enum.HumanoidStateType.Freefall
+local E_HS_JUMPING = Enum.HumanoidStateType.Jumping
+local E_HS_LANDED = Enum.HumanoidStateType.Landed
+local E_HS_RUNNING = Enum.HumanoidStateType.Running
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -68,6 +72,22 @@ local HB_SERIAL = tostring(random(10000000, 99999999))
 local HB_X = "HB_" .. random(10000, 99999) .. "_"
 local HB_HIST_SZ = 60
 local KILLLOG_SZ = 100
+
+-- [V11.1] ESTADO GLOBAL DO PATCH
+HB_V11 = HB_V11 or {}
+HB_V11.MissLog        = {}
+HB_V11.MaxMissLog     = 100
+HB_V11.LOSCache       = {}
+HB_V11.LOSCacheTTL    = 0.030
+HB_V11.LastFireResult = nil
+HB_V11.GlobalOffset   = v3zero
+HB_V11.RoundState     = {last="", lastFlick=0}
+HB_V11.StrafeState    = {}
+HB_V11.ProjectileSim  = {}
+HB_V11.HUDUpdateAccum = 0
+HB_V11.TaskAccum      = 0
+HB_V11.TriggerAccum   = 0
+HB_V11.ProjAccum      = 0
 
 for _, g in ipairs_(PG:GetChildren()) do
     if g:IsA("ScreenGui") and (sfind(g.Name, "HB_") or sfind(g.Name, "HELLBORN")) then g:Destroy() end
@@ -102,10 +122,6 @@ function HB_PointIn(pos, obj)
     return pos.X >= ap.X and pos.X <= ap.X + sz.X and pos.Y >= ap.Y and pos.Y <= ap.Y + sz.Y
 end
 function HB_ProSnapCurve(t) return t * t * t * (t * (t * 6 - 15) + 10) end
-function HB_ProOvershootCurve(t, op)
-    if t < 0.5 then return HB_ProSnapCurve(t/0.5) * (1.0 + op)
-    else return (1.0 + op) + HB_ProSnapCurve((t-0.5)/0.5) * (-op) end
-end
 function HB_MicroJitter(bp, tp, int, ph)
     if int <= 0 then return tp end
     if (tp - bp).Magnitude < 0.01 then return tp end
@@ -177,12 +193,11 @@ S.OneShotPerfect = true
 S.OneShotLead    = true
 S.OneShotGravity = true
 S.OneShotAdaptive = true
-S.OneShotIterations = 12
+S.OneShotIterations = 15
 S.OneShotConverge = true
 S.ScreenStretch = true
 S.ScreenStretchPreset = "21:9 Wide"
 S.ScreenStretchFOV = 95
-
 S.REV_AI = {meta=false,nas=false,cloning=false,selfPlay=false,worldModel=false,
     activeInf=false,transformer=false,moe=false,uncert=false,causal=false,
     counterfact=false,adversarial=false,transfer=false,federated=false,lifelong=false,
@@ -284,14 +299,83 @@ function HB_GetSmoothedPing()
     return PingTracker.smoothed > 0 and PingTracker.smoothed or LP:GetNetworkPing()
 end
 
+-- [V11.1] KALMAN 6D (pos + vel + acel)
+function HB_Kalman6D_New()
+    return {x = {0,0,0, 0,0,0, 0,0,0}, P = 1.0, Q = 0.008, R = 0.12, lastT = 0}
+end
+function HB_Kalman6D_Predict(k, dt)
+    local x = k.x
+    local px = x[1] + x[4]*dt + 0.5*x[7]*dt*dt
+    local py = x[2] + x[5]*dt + 0.5*x[8]*dt*dt
+    local pz = x[3] + x[6]*dt + 0.5*x[9]*dt*dt
+    local vx = x[4] + x[7]*dt
+    local vy = x[5] + x[8]*dt
+    local vz = x[6] + x[9]*dt
+    return newV3(px, py, pz), newV3(vx, vy, vz)
+end
+function HB_Kalman6D_Update(k, measuredPos, dt)
+    if dt <= 0 then dt = 1/120 end
+    local x = k.x
+    local predPos = newV3(
+        x[1] + x[4]*dt + 0.5*x[7]*dt*dt,
+        x[2] + x[5]*dt + 0.5*x[8]*dt*dt,
+        x[3] + x[6]*dt + 0.5*x[9]*dt*dt
+    )
+    local S = k.P + k.R
+    local K = k.P / S
+    local innov = measuredPos - predPos
+    x[1] = predPos.X + K * innov.X
+    x[2] = predPos.Y + K * innov.Y
+    x[3] = predPos.Z + K * innov.Z
+    x[4] = x[4] + (K * innov.X) / dt * 0.6
+    x[5] = x[5] + (K * innov.Y) / dt * 0.6
+    x[6] = x[6] + (K * innov.Z) / dt * 0.6
+    x[7] = x[7] * 0.7 + ((K * innov.X) / (dt*dt)) * 0.3
+    x[8] = x[8] * 0.7 + ((K * innov.Y) / (dt*dt)) * 0.3
+    x[9] = x[9] * 0.7 + ((K * innov.Z) / (dt*dt)) * 0.3
+    k.P = (1 - K) * k.P + k.Q
+    k.lastT = tick()
+end
+
+-- [V11.1] SIMULAÇÃO ANALÍTICA DE BALA
+function HB_SimulateBullet(origin, dir, speed, gravity, targetChar, maxTime)
+    maxTime = maxTime or 1.2
+    local steps = 24
+    local dt = maxTime / steps
+    local pos = origin
+    local vel = dir.Unit * speed
+    local g = newV3(0, -gravity, 0)
+    for i = 1, steps do
+        local prevPos = pos
+        vel = vel + g * dt
+        pos = pos + vel * dt
+        if targetChar and targetChar.Parent then
+            local params = RaycastParams.new()
+            params.FilterType = E_RFT_INCLUDE
+            params.FilterDescendantsInstances = {targetChar}
+            params.IgnoreWater = true
+            params.RespectCanCollide = false
+            local hit = workspace:Raycast(prevPos, pos - prevPos, params)
+            if hit and hit.Instance then
+                return true, hit.Position, i * dt, hit.Instance
+            end
+        end
+        if pos.Y < -50 then break end
+    end
+    return false, pos, maxTime, nil
+end
+
 function HB_GetH(p)
     local h = Hst[p]
     if not h then
         h = {spX={},spY={},spZ={},spT={},spHead=0,spCount=0,
             kalman={x={0,0,0,0,0,0},lastT=0,gain=0.45},
+            kalman6=nil,
             vel=v3zero,prevVel=nil,acc=v3zero,jit=0,stab=1,lastPos=nil,lastT=0,
             dCh=0,lastDir=nil,chase=false,chaseFr=0,tpIgn=0,weapon="unknown",
-            isJumping=false,isCrouch=false,strafeAmount=0,dirChanges=0,lastDirChangeT=0}
+            isJumping=false,isCrouch=false,strafeAmount=0,dirChanges=0,lastDirChangeT=0,
+            humanoidState=nil,isFreefall=false,isRunning=false,isLanded=false,
+            moveDir=v3zero,moveSpeed=0}
         for i = 1, HB_HIST_SZ do h.spX[i]=0 h.spY[i]=0 h.spZ[i]=0 h.spT[i]=0 end
         Hst[p] = h
     end
@@ -388,7 +472,7 @@ end
 function HB_AddPlayer(p) Cache.Set[p] = true; HB_HookChar(p); HB_RebuildList() end
 function HB_RemovePlayer(p)
     Cache.Set[p]=nil Cache.Chars[p]=nil Cache.Heads[p]=nil Cache.HRPs[p]=nil
-    Hst[p]=nil OneShotMem[p]=nil HB_RebuildList()
+    Hst[p]=nil OneShotMem[p]=nil HB_V11.StrafeState[p]=nil HB_RebuildList()
 end
 for _, p in ipairs_(Players:GetPlayers()) do HB_AddPlayer(p) end
 Players.PlayerAdded:Connect(HB_AddPlayer)
@@ -500,6 +584,7 @@ function GetRole(p)
     return role
 end
 
+-- [V11.1] HB_UpdateH (Kalman6D + GetState + vel 0.85)
 function HB_UpdateH(p, pos, hum)
     local h = HB_GetH(p)
     local now = tick()
@@ -509,6 +594,25 @@ function HB_UpdateH(p, pos, hum)
         if (dx*dx + dy*dy + dz*dz) > 2500 then h.tpIgn = now; return end
     end
     if now - h.tpIgn < 0.5 then return end
+
+    if not h.kalman6 then
+        h.kalman6 = HB_Kalman6D_New()
+        h.kalman6.x[1] = pos.X
+        h.kalman6.x[2] = pos.Y
+        h.kalman6.x[3] = pos.Z
+        h.kalman6.lastT = now
+    else
+        local dt6 = now - (h.kalman6.lastT or now)
+        if dt6 > 0 and dt6 < 0.25 then
+            HB_Kalman6D_Update(h.kalman6, pos, dt6)
+        else
+            h.kalman6.x[1] = pos.X
+            h.kalman6.x[2] = pos.Y
+            h.kalman6.x[3] = pos.Z
+            h.kalman6.lastT = now
+        end
+    end
+
     local k = h.kalman
     if k.lastT == 0 then k.lastT = now end
     local dt = now - k.lastT; if dt < 1/120 then dt = 1/120 end
@@ -518,16 +622,18 @@ function HB_UpdateH(p, pos, hum)
     pr = x[1]+x[4]*dt; e = pos.X-pr; x[1]=pr+gain*e; x[4]=x[4]+(e/dt)*0.5
     pr = x[2]+x[5]*dt; e = pos.Y-pr; x[2]=pr+gain*e; x[5]=x[5]+(e/dt)*0.5
     pr = x[3]+x[6]*dt; e = pos.Z-pr; x[3]=pr+gain*e; x[6]=x[6]+(e/dt)*0.5
+
     local idx = h.spHead + 1
     if idx > HB_HIST_SZ then idx = 1 end
     h.spHead = idx
     h.spX[idx]=pos.X; h.spY[idx]=pos.Y; h.spZ[idx]=pos.Z; h.spT[idx]=now
     if h.spCount < HB_HIST_SZ then h.spCount = h.spCount + 1 end
+
     if lastPos and h.lastT > 0 then
         local dt2 = now - h.lastT
         if dt2 > 0.001 then
             local invdt2 = 1 / dt2
-            h.vel = h.vel:Lerp(newV3((pos.X-lastPos.X)*invdt2, (pos.Y-lastPos.Y)*invdt2, (pos.Z-lastPos.Z)*invdt2), 0.5)
+            h.vel = h.vel:Lerp(newV3((pos.X-lastPos.X)*invdt2, (pos.Y-lastPos.Y)*invdt2, (pos.Z-lastPos.Z)*invdt2), 0.85)
             if h.prevVel then h.acc = h.acc:Lerp((h.vel - h.prevVel) * invdt2, 0.3) end
             h.prevVel = h.vel
             local vMag = h.vel.Magnitude
@@ -545,8 +651,30 @@ function HB_UpdateH(p, pos, hum)
             h.strafeAmount = lateral / (lateral + forward + 0.001)
         end
     end
+
+    if hum then
+        local ok, state = pcall(function() return hum:GetState() end)
+        if ok and state then
+            h.humanoidState = state
+            h.isFreefall = (state == E_HS_FREEFALL or state == E_HS_JUMPING)
+            h.isRunning  = (state == E_HS_RUNNING)
+            h.isLanded   = (state == E_HS_LANDED)
+        end
+        h.moveDir = hum.MoveDirection
+        h.moveSpeed = h.moveDir.Magnitude
+    end
+
+    local hrp = Cache.HRPs[p]
+    if hrp then
+        local av = hrp.AssemblyLinearVelocity
+        if av and av.Magnitude > 0.5 then
+            h.vel = h.vel:Lerp(av, 0.85)
+        end
+    end
+
     if hum and Cache.Heads[p] then h.isCrouch = (Cache.Heads[p].Position.Y - pos.Y) < 2.2 end
     h.lastPos = pos; h.lastT = now
+
     if h.spCount >= 5 then
         local sd = 0; local head = h.spHead
         for i = 1, 4 do
@@ -632,6 +760,37 @@ function HB_HasLineOfSight(targetChar, extraIgnore)
     params.FilterDescendantsInstances = ignore
     params.IgnoreWater = true; params.RespectCanCollide = false
     return workspace:Raycast(head.Position, targetPos - head.Position, params) == nil
+end
+
+-- [V11.1] LOS CACHE com TTL 30ms
+function HB_HasLOSCached(ch, fromPos, toPos)
+    if not ch or not ch.Parent then return false end
+    local key = tostring(ch) .. "|" .. tostring(floor(fromPos.X)) .. "," .. tostring(floor(fromPos.Z))
+    local now = tick()
+    local cached = HB_V11.LOSCache[key]
+    if cached and (now - cached.t) < HB_V11.LOSCacheTTL then
+        return cached.ok
+    end
+    local ignore = {LP.Character, ch}
+    local params = RaycastParams.new()
+    params.FilterType = E_RFT_EXCLUDE
+    params.FilterDescendantsInstances = ignore
+    params.IgnoreWater = true
+    params.RespectCanCollide = false
+    local ok = workspace:Raycast(fromPos, toPos - fromPos, params) == nil
+    HB_V11.LOSCache[key] = {ok = ok, t = now}
+    return ok
+end
+function HB_HasLOSFromTo(fromPos, toPos, targetChar)
+    if not fromPos or not toPos then return false end
+    if targetChar then return HB_HasLOSCached(targetChar, fromPos, toPos) end
+    local ignore = {LP.Character}
+    local params = RaycastParams.new()
+    params.FilterType = E_RFT_EXCLUDE
+    params.FilterDescendantsInstances = ignore
+    params.IgnoreWater = true
+    params.RespectCanCollide = false
+    return workspace:Raycast(fromPos, toPos - fromPos, params) == nil
 end
 
 HB_Tracer = {enabled=true, ignoreHitscan=true, lifetime=0.40, thickness=0.25,
@@ -731,9 +890,11 @@ function HB_SpawnKillEffect(victimChar)
     end)
 end
 
+-- [V11.1] SILENT FIRE (Mouse.Hit/Origin + Torso + Head + Handle + Ammo)
 function SilentFire(tool, aimPos, bypassCooldown)
     if not tool or not aimPos or not tool.Parent then return false end
-    local lpCh = LP.Character; if not lpCh then return false end
+    local lpCh = LP.Character
+    if not lpCh then return false end
     if tool.Parent ~= lpCh then
         local eq = HB_EquipAndWait(tool, 0.5)
         if not eq or eq ~= tool then
@@ -743,67 +904,106 @@ function SilentFire(tool, aimPos, bypassCooldown)
             tool = eq
         end
     end
-    if S.RateLimit then
-        local rb = RevStealth.rateBuf; local now = tick()
-        for i = #rb, 1, -1 do if now - rb[i] > 1 then tremove(rb, i) end end
-        if #rb >= 15 then return false end
-        rb[#rb+1] = now
+    local ammo = tool:GetAttribute("Ammo") or tool:GetAttribute("Bullets")
+    if not ammo then
+        local ammoObj = tool:FindFirstChild("Ammo") or tool:FindFirstChild("Bullets")
+        if ammoObj and ammoObj:IsA("ValueBase") then ammo = ammoObj.Value end
     end
+    if ammo and tonumber(ammo) and tonumber(ammo) <= 0 then return false end
+
     local now = tick()
-    if S.AntiFlickBlock and now < AntiFlickGuard.backoffUntil then return false end
     if not bypassCooldown and now - Sil.lastFire < 0.03 then return false end
     Sil.lastFire = now
-    if S.FakeMiss and random() < 0.01 then
-        aimPos = aimPos + newV3((random()-0.5)*4, (random()-0.5)*4, (random()-0.5)*4)
-    end
+
     local hum = lpCh:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then return false end
-    local head = lpCh:FindFirstChild("Head")
-    local hrp  = lpCh:FindFirstChild("HumanoidRootPart")
+    local head  = lpCh:FindFirstChild("Head")
+    local hrp   = lpCh:FindFirstChild("HumanoidRootPart")
+    local torso = lpCh:FindFirstChild("UpperTorso") or lpCh:FindFirstChild("Torso")
     local handle = tool:FindFirstChild("Handle")
     local fireFromPos = (handle and handle.Position) or (head and head.Position) or Camera.CFrame.Position
+
     local oldAuto = hum.AutoRotate
-    local oldHeadCF = head and head.CFrame
-    local oldHrpCF  = hrp and hrp.CFrame
+    local oldHeadCF   = head and head.CFrame
+    local oldHrpCF    = hrp and hrp.CFrame
+    local oldTorsoCF  = torso and torso.CFrame
     local oldHandleCF = handle and handle.CFrame
+
     hum.AutoRotate = false
-    if hrp    then pcall(function() hrp.CFrame    = lookAt(hrp.Position,    aimPos) end) end
+    if hrp    then pcall(function() hrp.CFrame    = lookAt(hrp.Position, aimPos) end) end
+    if torso  then pcall(function() torso.CFrame  = lookAt(torso.Position, aimPos) end) end
+    if head   then pcall(function() head.CFrame   = lookAt(head.Position, aimPos) end) end
     if handle then pcall(function() handle.CFrame = lookAt(handle.CFrame.Position, aimPos) end) end
-    if head   then pcall(function() head.CFrame   = lookAt(head.CFrame.Position,   aimPos) end) end
+
     local fakePart
     if Mouse then
         pcall(function()
             fakePart = Instance_new("Part")
-            fakePart.Size = newV3(0.1, 0.1, 0.1); fakePart.Transparency = 1
-            fakePart.CanCollide = false; fakePart.Anchored = true
-            fakePart.CFrame = newCF(aimPos); fakePart.Parent = workspace
+            fakePart.Size = newV3(0.1, 0.1, 0.1)
+            fakePart.Transparency = 1
+            fakePart.CanCollide = false
+            fakePart.Anchored = true
+            fakePart.CFrame = newCF(aimPos)
+            fakePart.Parent = workspace
             Mouse.Target = fakePart
+            Mouse.Hit = newCF(aimPos)
+            Mouse.Origin = newCF(fireFromPos, aimPos)
+            Mouse.UnitRay = Ray.new(fireFromPos, (aimPos - fireFromPos).Unit)
         end)
     end
+
     local ok = pcall(function() tool:Activate() end)
+
     if handle and oldHandleCF then handle.CFrame = oldHandleCF end
     if head and oldHeadCF then pcall(function() head.CFrame = oldHeadCF end) end
-    if hrp  and oldHrpCF  then pcall(function() hrp.CFrame  = oldHrpCF  end) end
+    if torso and oldTorsoCF then pcall(function() torso.CFrame = oldTorsoCF end) end
+    if hrp and oldHrpCF then pcall(function() hrp.CFrame = oldHrpCF end) end
     hum.AutoRotate = oldAuto
-    if fireFromPos and HB_Tracer.enabled then
+
+    if fireFromPos and HB_Tracer and HB_Tracer.enabled then
         if (not IsHitscan(tool)) or HB_Tracer.ignoreHitscan then
             spawn(HB_SpawnTracer, fireFromPos, aimPos)
         end
     end
     if fakePart then delay(0.05, function() if fakePart then fakePart:Destroy() end end) end
+
     if ok then
         Weapon.lastFireTime[tool] = now
-        AntiFlickGuard.fails = 0
+        HB_V11.LastFireResult = {t = now, aim = aimPos, tool = tool.Name, ok = true}
     else
-        AntiFlickGuard.fails = AntiFlickGuard.fails + 1
-        if S.AntiFlickBlock and AntiFlickGuard.fails >= 3 then
-            AntiFlickGuard.backoffUntil = now + S.AntiFlickBackoff
-            AntiFlickGuard.fails = 0
-        end
+        HB_V11.LastFireResult = {t = now, aim = aimPos, tool = tool.Name, ok = false}
     end
     return ok
 end
 
+-- [V11.1] VERIFY LOS — DOIS RAYCASTS (Include acha corpo, Exclude confirma LOS)
+function HB_VerifyLOS(ch, camPos, aim)
+    if not ch or not ch.Parent then return aim, false, nil end
+    local paramsInc = RaycastParams.new()
+    paramsInc.FilterType = E_RFT_INCLUDE
+    paramsInc.FilterDescendantsInstances = {ch}
+    paramsInc.IgnoreWater = true
+    paramsInc.RespectCanCollide = false
+    local hitInc = workspace:Raycast(camPos, aim - camPos, paramsInc)
+    if not hitInc or not hitInc.Instance then
+        return aim, false, nil
+    end
+    local bodyPoint = hitInc.Position
+    local bodyPart = hitInc.Instance
+    local ignore = {LP.Character, ch}
+    local paramsExc = RaycastParams.new()
+    paramsExc.FilterType = E_RFT_EXCLUDE
+    paramsExc.FilterDescendantsInstances = ignore
+    paramsExc.IgnoreWater = true
+    paramsExc.RespectCanCollide = false
+    local blocker = workspace:Raycast(camPos, bodyPoint - camPos, paramsExc)
+    if blocker and blocker.Instance then
+        return bodyPoint, false, bodyPart
+    end
+    return bodyPoint, true, bodyPart
+end
+
+-- [V11.1] LEAD ITERATIVO com DAMPING 0.65 + cinemática completa
 function HB_CalcLeadPosIterative(tp, ch, camPos, tool)
     if not ch or not ch.Parent then return nil end
     local head = ch:FindFirstChild("Head")
@@ -816,27 +1016,29 @@ function HB_CalcLeadPosIterative(tp, ch, camPos, tool)
     local ping = HB_GetSmoothedPing()
     local basePos = head.Position
     local finalPos = basePos
-    local iterations = S.OneShotIterations or 12
-    local frameTime = 1 / math.max(FPS.cur or 60, 30)
+    local iterations = S.OneShotIterations or 15
+    local frameDt = 1 / math.max(FPS.cur or 60, 30)
     local hitscan = IsHitscan(tool)
+    local gravity = 196.2
+    local damping = 0.65
     for iter = 1, iterations do
         local dist = (finalPos - camPos).Magnitude
         local travel = hitscan and 0 or (dist / spd)
-        local t = travel + (ping * 0.5) + frameTime
+        local t = travel + (ping * 0.5) + frameDt
         local targetPoint = basePos + vel * t
         if S.OneShotLead and acc.Magnitude > 0.1 then
             targetPoint = targetPoint + acc * (0.5 * t * t)
         end
         if S.OneShotGravity and not hitscan then
-            targetPoint = newV3(targetPoint.X, targetPoint.Y + 0.5 * 196.2 * t * t, targetPoint.Z)
+            targetPoint = targetPoint + newV3(0, 0.5 * gravity * t * t, 0)
         end
-        if h and h.dirChanges > 3 and h.lastDirChangeT and (tick() - h.lastDirChangeT) < 0.4 then
-            targetPoint = targetPoint + h.vel * 0.012
+        if h and h.dirChanges and h.dirChanges > 3 and h.lastDirChangeT and (tick() - h.lastDirChangeT) < 0.4 then
+            targetPoint = targetPoint + h.vel * 0.015
         end
         if h and h.isCrouch and S.HeadOnlyLock then
-            targetPoint = newV3(targetPoint.X, targetPoint.Y - 0.35, targetPoint.Z)
-        elseif h and h.isJumping and S.HeadOnlyLock then
-            targetPoint = newV3(targetPoint.X, targetPoint.Y + 0.25, targetPoint.Z)
+            targetPoint = targetPoint - newV3(0, 0.35, 0)
+        elseif h and h.isFreefall and S.HeadOnlyLock then
+            targetPoint = targetPoint + newV3(0, 0.20, 0)
         end
         if S.OneShotAdaptive then
             local mem = OneShotMem[tp]
@@ -846,45 +1048,71 @@ function HB_CalcLeadPosIterative(tp, ch, camPos, tool)
                 targetPoint = targetPoint + mem.offset * decay
             end
         end
-        if S.OneShotConverge and (targetPoint - finalPos).Magnitude < 0.005 then
-            finalPos = targetPoint; break
+        local delta = (targetPoint - finalPos)
+        if delta.Magnitude < 0.002 then
+            finalPos = targetPoint
+            break
         end
-        finalPos = targetPoint
+        finalPos = finalPos + delta * damping
     end
     local finalDist = (finalPos - camPos).Magnitude
-    local finalT = (hitscan and 0 or (finalDist / spd)) + (ping * 0.5) + frameTime
+    local finalT = (hitscan and 0 or (finalDist / spd)) + (ping * 0.5) + frameDt
     return finalPos, finalT, finalDist
 end
 
-function HB_VerifyLOS(ch, camPos, aim)
-    if not ch or not ch.Parent then return aim, false, nil end
-    local params = RaycastParams.new()
-    params.FilterType = E_RFT_INCLUDE
-    params.FilterDescendantsInstances = {ch}
-    params.IgnoreWater = true
-    params.RespectCanCollide = false
-    local result = workspace:Raycast(camPos, aim - camPos, params)
-    if result and result.Instance then
-        return result.Position, true, result.Instance
+-- [V11.1] STRAFE DETECTION
+function HB_V11_AnalyzeStrafe(p)
+    local h = Hst[p]
+    if not h then return nil end
+    local st = HB_V11.StrafeState[p]
+    if not st then
+        st = {velHist = {}, dirSign = 0, changes = 0, lastChangeT = 0, period = 0}
+        HB_V11.StrafeState[p] = st
     end
-    return aim, false, nil
+    local vx, vz = h.vel.X, h.vel.Z
+    local horizMag = sqrt(vx*vx + vz*vz)
+    if horizMag < 2 then return nil end
+    local sign = (vx >= 0) and 1 or -1
+    if sign ~= st.dirSign and st.dirSign ~= 0 then
+        local now = tick()
+        if st.lastChangeT > 0 then st.period = (now - st.lastChangeT) end
+        st.lastChangeT = now
+        st.changes = st.changes + 1
+    end
+    st.dirSign = sign
+    if #st.velHist >= 20 then tremove(st.velHist, 1) end
+    st.velHist[#st.velHist+1] = {vx = vx, vz = vz, t = tick()}
+    if st.changes < 3 or st.period <= 0 or st.period > 0.8 then return nil end
+    local sinceChange = tick() - st.lastChangeT
+    local nextFlipIn = st.period - sinceChange
+    if nextFlipIn > 0 and nextFlipIn < 0.35 then
+        return {
+            willFlip = true,
+            flipIn = nextFlipIn,
+            predictVel = newV3(-st.dirSign * horizMag, 0, 0),
+            period = st.period,
+            confidence = min(1, st.changes / 6),
+        }
+    end
+    return nil
 end
 
+-- [V11.1] MULTIPOINT em LEQUE (22 pontos em 3 anéis)
 function HB_MultiPointAim(ch, camPos, basePoint)
     if not ch or not ch.Parent then return basePoint, false, nil end
-    local offsets = {
-        Vector3.new(0, 0, 0),
-        Vector3.new(0.15, 0, 0),   Vector3.new(-0.15, 0, 0),
-        Vector3.new(0, 0.15, 0),   Vector3.new(0, -0.15, 0),
-        Vector3.new(0, 0, 0.15),   Vector3.new(0, 0, -0.15),
-        Vector3.new(0.35, 0, 0),   Vector3.new(-0.35, 0, 0),
-        Vector3.new(0, 0.35, 0),   Vector3.new(0, -0.35, 0),
-        Vector3.new(0, 0, 0.35),   Vector3.new(0, 0, -0.35),
-        Vector3.new(0.2, 0.2, 0),  Vector3.new(-0.2, 0.2, 0),
-        Vector3.new(0.2, -0.2, 0), Vector3.new(-0.2, -0.2, 0),
-        Vector3.new(0.55, 0, 0),   Vector3.new(-0.55, 0, 0),
-        Vector3.new(0, 0.55, 0),
-    }
+    local offsets = {newV3(0,0,0)}
+    local rings = {{0.12, 8}, {0.25, 8}, {0.45, 6}}
+    for _, ring in ipairs_(rings) do
+        local radius, count = ring[1], ring[2]
+        for i = 1, count do
+            local angle = (i - 1) * (pi * 2 / count)
+            offsets[#offsets+1] = newV3(
+                cos(angle) * radius,
+                sin(angle) * radius * 0.6,
+                sin(angle) * radius * 0.8
+            )
+        end
+    end
     for i = 1, #offsets do
         local testPoint = basePoint + offsets[i]
         local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, camPos, testPoint)
@@ -893,110 +1121,192 @@ function HB_MultiPointAim(ch, camPos, basePoint)
     return basePoint, false, nil
 end
 
-function HB_HasLOSFromTo(fromPos, toPos, targetChar)
-    if not fromPos or not toPos then return false end
-    local ignore = {LP.Character}
-    if targetChar then ignore[#ignore+1] = targetChar end
-    local params = RaycastParams.new()
-    params.FilterType = E_RFT_EXCLUDE
-    params.FilterDescendantsInstances = ignore
-    params.IgnoreWater = true
-    params.RespectCanCollide = false
-    return workspace:Raycast(fromPos, toPos - fromPos, params) == nil
-end
-
 function HB_FindAimWithLOS(ch, fromPos, baseAim)
     if not ch or not ch.Parent then return baseAim, false end
-    if HB_HasLOSFromTo(fromPos, baseAim, ch) then return baseAim, true end
+    if HB_HasLOSCached(ch, fromPos, baseAim) then return baseAim, true end
     local offsets = {
-        Vector3.new(0.4, 0, 0),   Vector3.new(-0.4, 0, 0),
-        Vector3.new(0, 0.4, 0),   Vector3.new(0, -0.4, 0),
-        Vector3.new(0, 0, 0.4),   Vector3.new(0, 0, -0.4),
-        Vector3.new(0.8, 0, 0),   Vector3.new(-0.8, 0, 0),
-        Vector3.new(0, 0.8, 0),   Vector3.new(0, -0.8, 0),
-        Vector3.new(0.4, 0.4, 0), Vector3.new(-0.4, 0.4, 0),
-        Vector3.new(0.4, -0.4, 0),Vector3.new(-0.4, -0.4, 0),
-        Vector3.new(0, 0, 0.8),   Vector3.new(0, 0, -0.8),
-        Vector3.new(1.2, 0, 0),   Vector3.new(-1.2, 0, 0),
-        Vector3.new(0, 1.2, 0),   Vector3.new(0, -1.2, 0),
-        Vector3.new(1.2, 0.6, 0), Vector3.new(-1.2, 0.6, 0),
+        newV3(0.25, 0, 0), newV3(-0.25, 0, 0),
+        newV3(0, 0.25, 0), newV3(0, -0.25, 0),
+        newV3(0, 0, 0.25), newV3(0, 0, -0.25),
+        newV3(0.5, 0, 0), newV3(-0.5, 0, 0),
+        newV3(0, 0.5, 0), newV3(0, -0.5, 0),
+        newV3(0, 0, 0.5), newV3(0, 0, -0.5),
+        newV3(0.75, 0, 0), newV3(-0.75, 0, 0),
+        newV3(0, 0.75, 0), newV3(0, -0.75, 0),
+        newV3(0, 0, 0.75), newV3(0, 0, -0.75),
+        newV3(1.0, 0, 0), newV3(-1.0, 0, 0),
+        newV3(0, 1.0, 0), newV3(0, -1.0, 0),
+        newV3(0.25, 0.25, 0), newV3(-0.25, 0.25, 0),
+        newV3(0.25, -0.25, 0), newV3(-0.25, -0.25, 0),
+        newV3(0, 0.25, 0.25), newV3(0, 0.25, -0.25),
+        newV3(0, -0.25, 0.25), newV3(0, -0.25, -0.25),
+        newV3(0.5, 0.5, 0), newV3(-0.5, 0.5, 0),
+        newV3(0.5, -0.5, 0), newV3(-0.5, -0.5, 0),
+        newV3(1.2, 0, 0), newV3(-1.2, 0, 0),
+        newV3(0, 1.2, 0), newV3(0, -1.2, 0),
+        newV3(1.2, 0.6, 0), newV3(-1.2, 0.6, 0),
     }
     for i = 1, #offsets do
         local testAim = baseAim + offsets[i]
-        if HB_HasLOSFromTo(fromPos, testAim, ch) then return testAim, true end
+        if HB_HasLOSCached(ch, fromPos, testAim) then return testAim, true end
     end
     return baseAim, false
 end
 
+-- [V11.1] PROJECTILE SIM para guns
+function HB_V11_SolveGunTrajectory(tp, ch, camPos, tool)
+    if not ch or not ch.Parent then return nil end
+    if IsHitscan(tool) then return nil end
+    local head = ch:FindFirstChild("Head")
+    if not head then return nil end
+    local h = Hst[tp]
+    local spd = GetWeaponSpeed(tool) or 2500
+    local gravity = 196.2
+    local baseAim = HB_CalcLeadPosIterative(tp, ch, camPos, tool)
+    if not baseAim then return nil end
+    local targets = {{part = head, name = "head"}}
+    local torso = ch:FindFirstChild("UpperTorso") or ch:FindFirstChild("Torso")
+    if torso then targets[#targets+1] = {part = torso, name = "torso"} end
+    local hrp = ch:FindFirstChild("HumanoidRootPart")
+    if hrp then targets[#targets+1] = {part = hrp, name = "hrp"} end
+    local best = nil
+    for i = 1, #targets do
+        local target = targets[i]
+        if target.part then
+            local aimPoint = baseAim + (target.part.Position - head.Position)
+            local dir = (aimPoint - camPos).Unit
+            local hit, hitPos, hitT, hitPart = HB_SimulateBullet(camPos, dir, spd, gravity, ch, 1.0)
+            if hit and hitPart and hitPart:IsDescendantOf(ch) then
+                if not best or hitT < best.hitT then
+                    best = {aim = hitPos, hitT = hitT, part = hitPart.Name, target = target.name}
+                end
+            end
+        end
+    end
+    return best
+end
+
+-- [V11.1] PERFECT AIM (com strafe + projectile sim integrados)
 function HB_PerfectAim(tp, ch, camPos, tool, hum)
     if not ch or not ch.Parent or not hum or hum.Health <= 0 then return nil end
     local head = ch:FindFirstChild("Head")
     local hrp  = ch:FindFirstChild("HumanoidRootPart")
     local upperTorso = ch:FindFirstChild("UpperTorso") or ch:FindFirstChild("Torso")
     if not head then return nil end
+
+    -- 1) tenta projectile sim para guns
+    if tool and not IsHitscan(tool) then
+        local sol = HB_V11_SolveGunTrajectory(tp, ch, camPos, tool)
+        if sol then
+            local aim = sol.aim
+            if S.Humanize then
+                local jitter = HB_V11.GlobalOffset or v3zero
+                local n = tick() * 0.001
+                aim = aim + jitter + newV3(
+                    (noise(n,0,0)*2-1)*0.03,
+                    (noise(0,n,0)*2-1)*0.03,
+                    (noise(0,0,n)*2-1)*0.03
+                )
+            end
+            return aim, sol.hitT, (aim - camPos).Magnitude, "projectile_" .. sol.target
+        end
+    end
+
+    -- 2) lead iterativo + strafe correction
     local leadAim, t, dist = HB_CalcLeadPosIterative(tp, ch, camPos, tool)
     if not leadAim then return nil end
+    if S.JukeCounter or S.MovingTargetPredict then
+        local strafe = HB_V11_AnalyzeStrafe(tp)
+        if strafe and strafe.willFlip and strafe.confidence > 0.4 then
+            local flipWeight = (1 - strafe.flipIn / strafe.period) * strafe.confidence
+            leadAim = leadAim + strafe.predictVel * (t * flipWeight)
+        end
+    end
+
     local fireOrigin = camPos
     local lpHead = Cache.Heads[LP]
     if lpHead then fireOrigin = lpHead.Position end
-    local samples = {}
-    tinsert(samples, leadAim)
-    tinsert(samples, head.Position)
-    local headOffsets = {
-        Vector3.new(0.3, 0, 0),   Vector3.new(-0.3, 0, 0),
-        Vector3.new(0, 0.3, 0),   Vector3.new(0, -0.3, 0),
-        Vector3.new(0.3, 0.3, 0), Vector3.new(-0.3, 0.3, 0),
-        Vector3.new(0.3, -0.3, 0),Vector3.new(-0.3, -0.3, 0),
-        Vector3.new(0.6, 0, 0),   Vector3.new(-0.6, 0, 0),
-        Vector3.new(0, 0.6, 0),   Vector3.new(0, -0.6, 0),
-        Vector3.new(0, 0, 0.3),   Vector3.new(0, 0, -0.3),
+
+    local function tryPoint(p)
+        local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, fireOrigin, p)
+        if hasLOS then return hitPos, hitPart end
+        return nil
+    end
+
+    local p, part = tryPoint(leadAim)
+    if p then return p, t, dist, (part and part.Name) or "head" end
+    p, part = tryPoint(head.Position)
+    if p then return p, t, dist, "head_static" end
+
+    local grid = {
+        newV3(0.15, 0, 0), newV3(-0.15, 0, 0),
+        newV3(0, 0.15, 0), newV3(0, -0.15, 0),
+        newV3(0, 0, 0.15), newV3(0, 0, -0.15),
+        newV3(0.3, 0, 0), newV3(-0.3, 0, 0),
+        newV3(0, 0.3, 0), newV3(0, -0.3, 0),
+        newV3(0, 0, 0.3), newV3(0, 0, -0.3),
+        newV3(0.5, 0, 0), newV3(-0.5, 0, 0),
+        newV3(0, 0.5, 0), newV3(0, -0.5, 0),
+        newV3(0.15, 0.15, 0), newV3(-0.15, 0.15, 0),
+        newV3(0.15, -0.15, 0), newV3(-0.15, -0.15, 0),
+        newV3(0.3, 0.3, 0), newV3(-0.3, 0.3, 0),
+        newV3(0.3, -0.3, 0), newV3(-0.3, -0.3, 0),
     }
-    for i = 1, #headOffsets do tinsert(samples, leadAim + headOffsets[i]) end
-    if head then tinsert(samples, head.Position + Vector3.new(0, -0.6, 0)) end
+    for i = 1, #grid do
+        p, part = tryPoint(head.Position + grid[i])
+        if p then return p, t, dist, "head_grid" end
+    end
+    if hrp then
+        local v = (Hst[tp] and Hst[tp].vel) or hrp.AssemblyLinearVelocity or v3zero
+        p = tryPoint(hrp.Position + v * (t or 0.05))
+        if p then return p, t, dist, "hrp" end
+        p = tryPoint(hrp.Position)
+        if p then return p, t, dist, "hrp_static" end
+    end
     if upperTorso then
-        tinsert(samples, upperTorso.Position)
-        tinsert(samples, upperTorso.Position + Vector3.new(0, 0.5, 0))
+        local v = (Hst[tp] and Hst[tp].vel) or v3zero
+        p = tryPoint(upperTorso.Position + v * (t or 0.05))
+        if p then return p, t, dist, "upper_torso" end
+        p = tryPoint(upperTorso.Position)
+        if p then return p, t, dist, "upper_torso_static" end
     end
-    if hrp then tinsert(samples, hrp.Position) end
-    for i = 1, #samples do
-        local sample = samples[i]
-        local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, fireOrigin, sample)
-        if hasLOS then
-            local partName = (hitPart and hitPart.Name) or "unknown"
-            return hitPos, t, dist, partName
-        end
-    end
-    return leadAim, t, dist, "blind"
+    local mpAim, mpLOS = HB_MultiPointAim(ch, fireOrigin, leadAim)
+    if mpLOS then return mpAim, t, dist, "multipoint" end
+    return nil
 end
 
+-- [V11.1] PERFECT SHOT — retry condicional + MissLog + AutoTune
 function HB_PerfectShot(tp, ch, hum, camPos, tool)
     if not tool or not ch or not hum then return false end
     if hum.Health <= 0 or not hum.Parent then return true end
     local head = ch:FindFirstChild("Head")
     if not head then return false end
     local aim, t, dist, hitType = HB_PerfectAim(tp, ch, camPos, tool, hum)
-    if not aim then aim = head.Position; hitType = "fallback" end
+    if not aim then
+        HB_DBG.wallSkips = (HB_DBG.wallSkips or 0) + 1
+        return false
+    end
     local lpHead = Cache.Heads[LP]
     local fireOrigin = lpHead and lpHead.Position or camPos
-    if S.WallCheck then
-        local losAim, hasLOS = HB_FindAimWithLOS(ch, fireOrigin, aim)
-        if hasLOS then aim = losAim else
-            HB_DBG.wallSkips = (HB_DBG.wallSkips or 0) + 1
-            return false
-        end
+    local losAim, hasLOS = HB_FindAimWithLOS(ch, fireOrigin, aim)
+    if not hasLOS then
+        HB_DBG.wallSkips = (HB_DBG.wallSkips or 0) + 1
+        return false
     end
+    aim = losAim
     local hpBefore = hum.Health
     HB_DBG.hitAttempts = (HB_DBG.hitAttempts or 0) + 1
     HB_DBG.lastHitType = hitType or "none"
     local fired = false
-    for equipTry = 1, 5 do
+    for equipTry = 1, 4 do
         local ok = SilentFire(tool, aim, true)
         if ok then fired = true; break end
-        task.wait(0.02)
+        wait(0.015)
     end
     if not fired then return false end
     local verifyStart = tick()
-    while tick() - verifyStart < 0.15 do
+    local verifyMax = IsHitscan(tool) and 0.40 or 0.25
+    while tick() - verifyStart < verifyMax do
         RS_Heartbeat:Wait()
         if not hum.Parent or hum.Health < hpBefore then
             HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
@@ -1004,43 +1314,76 @@ function HB_PerfectShot(tp, ch, hum, camPos, tool)
             return true
         end
     end
+    -- retry condicional (só se alvo moveu > 1.2 studs)
     if S.RetryMiss and head.Parent and hum.Health > 0 then
-        HB_DBG.retries = (HB_DBG.retries or 0) + 1
-        local retryAim, _, _, _ = HB_PerfectAim(tp, ch, camPos, tool, hum)
-        if retryAim and S.WallCheck then
-            local rAim, rLOS = HB_FindAimWithLOS(ch, fireOrigin, retryAim)
-            retryAim = rLOS and rAim or nil
-        end
-        if retryAim then
-            RS_Heartbeat:Wait()
-            local retryOK = SilentFire(tool, retryAim, true)
-            if retryOK then
-                local retryVerify = tick()
-                while tick() - retryVerify < 0.10 do
+        local moved = (head.Position - aim).Magnitude
+        if moved > 1.2 then
+            HB_DBG.retries = (HB_DBG.retries or 0) + 1
+            local retryAim, _, _, _ = HB_PerfectAim(tp, ch, camPos, tool, hum)
+            if retryAim then
+                local rAim, rLOS = HB_FindAimWithLOS(ch, fireOrigin, retryAim)
+                if rLOS then
                     RS_Heartbeat:Wait()
-                    if not hum.Parent or hum.Health < hpBefore then
-                        HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
-                        OneShotMem[tp] = nil
-                        return true
+                    local retryOK = SilentFire(tool, rAim, true)
+                    if retryOK then
+                        local rv = tick()
+                        while tick() - rv < 0.20 do
+                            RS_Heartbeat:Wait()
+                            if not hum.Parent or hum.Health < hpBefore then
+                                HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
+                                OneShotMem[tp] = nil
+                                return true
+                            end
+                        end
                     end
                 end
             end
         end
     end
-    local lastMissOffset = head.Position - aim
-    if S.OneShotAdaptive and lastMissOffset then
+    local missOffset = head.Position - aim
+    tinsert(HB_V11.MissLog, {t = tick(), dist = dist, aim = aim, real = head.Position, err = missOffset.Magnitude, target = tp.Name, type = hitType})
+    if #HB_V11.MissLog > HB_V11.MaxMissLog then tremove(HB_V11.MissLog, 1) end
+    if S.OneShotAdaptive then
         local prev = OneShotMem[tp]
         if prev and prev.offset then
             local age = tick() - prev.t
-            local decayFactor = max(0.4, 1 - age / 15)
-            OneShotMem[tp] = {offset = prev.offset * decayFactor * 0.5 + lastMissOffset * 0.5, t = tick()}
+            local decayFactor = max(0.35, 1 - age / 12)
+            OneShotMem[tp] = {offset = prev.offset * decayFactor * 0.5 + missOffset * 0.5, t = tick()}
         else
-            OneShotMem[tp] = {offset = lastMissOffset * 0.6, t = tick()}
+            OneShotMem[tp] = {offset = missOffset * 0.6, t = tick()}
         end
     end
     return false
 end
 
+-- AUTO TUNE
+function HB_V11_AutoTune()
+    local log = HB_V11.MissLog
+    if #log < 5 then return end
+    local sum = v3zero
+    local count = 0
+    for i = math.max(1, #log - 8), #log do
+        local m = log[i]
+        if m.t and (tick() - m.t) < 30 then
+            sum = sum + (m.real - m.aim)
+            count = count + 1
+        end
+    end
+    if count == 0 then return end
+    local avg = sum / count
+    if avg.Magnitude > 1.5 then
+        HB_V11.GlobalOffset = HB_V11.GlobalOffset * 0.7 + avg * 0.3
+    else
+        HB_V11.GlobalOffset = HB_V11.GlobalOffset * 0.9
+    end
+    for p in pairs(Hst) do
+        if not OneShotMem[p] then
+            OneShotMem[p] = {offset = HB_V11.GlobalOffset, t = tick()}
+        end
+    end
+end
+
+-- REV_AI / MetaLearn / WorldModel / etc. (mantidos integralmente)
 function MetaLearnUpdate(perf)
     if not S.REV_AI.meta then return end
     local snap = (Flick and Flick.snapDur) or 0.001
@@ -1442,6 +1785,44 @@ function HB_ForceRestoreCamera()
     for i = 1, 20 do delay(i * 0.025, tryRestore) end
 end
 
+-- [V11.1] MM2 helpers
+function HB_MM2_IsGunEmpty(tool)
+    if not tool then return true end
+    local n = slower(tool.Name)
+    if not (sfind(n, "gun") or sfind(n, "revolver") or sfind(n, "pistol")) then return false end
+    local ammo = tool:GetAttribute("Ammo") or tool:GetAttribute("Bullets")
+    if not ammo then
+        local a = tool:FindFirstChild("Ammo") or tool:FindFirstChild("Bullets")
+        if a and a:IsA("ValueBase") then ammo = a.Value end
+    end
+    if ammo == nil then return false end
+    return tonumber(ammo) and tonumber(ammo) <= 0
+end
+function HB_MM2_RoundStartTick()
+    if not S.MM2_RoundStartFlick then return end
+    local now = tick()
+    if now - HB_V11.RoundState.lastFlick < 2.5 then return end
+    local candidates = {"GameTimer", "RoundTimer", "Timer", "TimeLeft"}
+    local txt = nil
+    for _, name in ipairs_(candidates) do
+        local obj = workspace:FindFirstChild(name, true)
+        if obj and obj:IsA("TextLabel") then txt = obj.Text; break end
+        if obj and obj:IsA("StringValue") then txt = obj.Value; break end
+    end
+    if not txt then return end
+    local low = slower(txt)
+    if (sfind(low, "0:00") or sfind(low, "starting") or sfind(low, "come")) then
+        if HB_V11.RoundState.last ~= low then
+            HB_V11.RoundState.last = low
+            HB_V11.RoundState.lastFlick = now
+            local q = FindMurderQueue()
+            if #q > 0 then spawn(StartFlick, q[1], "round-start") end
+        end
+    else
+        HB_V11.RoundState.last = low
+    end
+end
+
 function FindMurderQueue()
     local origin
     local lpHrp = Cache.HRPs[LP]
@@ -1455,7 +1836,9 @@ function FindMurderQueue()
         if p ~= LP then
             local role = GetRole(p)
             if role == "Murderer" then m = m + 1 elseif role == "Sheriff" then s = s + 1 else i_count = i_count + 1 end
-            if role == "Murderer" then
+            local skip = false
+            if role == "Sheriff" and S.MM2_SheriffProtect then skip = true end
+            if role == "Murderer" and not skip then
                 local ch = Cache.Chars[p]; local hrp = Cache.HRPs[p]
                 if ch and ch.Parent and hrp then
                     local hum = ch:FindFirstChildOfClass("Humanoid")
@@ -1639,11 +2022,30 @@ HB_CONNS[#HB_CONNS+1] = RS_Render:Connect(function(dt)
         end
     end
 end)
+
+-- AutoTune loop
+HB_CONNS[#HB_CONNS+1] = RS_Heartbeat:Connect(function(dt)
+    HB_V11.TaskAccum = HB_V11.TaskAccum + dt
+    if HB_V11.TaskAccum < 2.0 then return end
+    HB_V11.TaskAccum = 0
+    pcall(HB_V11_AutoTune)
+    pcall(HB_MM2_RoundStartTick)
+    local now = tick()
+    for k, v in pairs(HB_V11.LOSCache) do
+        if now - v.t > 2 then HB_V11.LOSCache[k] = nil end
+    end
+    for p in pairs(HB_V11.StrafeState) do
+        if not p.Parent then HB_V11.StrafeState[p] = nil end
+    end
+end)
+
+print("[HELLBORN V11.1 · BL1] OK — Kalman6D · LOS 2-ray · SilentFire Mouse.Hit/Origin · Lead damping · Multipoint fan · Projectile sim · Strafe detect · Retry condicional · MM2 helpers")
 --==============================================================
--- BLOCO 2 — VISUALS · UI · ESP · HUD · BOOT
--- Cole logo após o Bloco 1
+-- HELLBORN v11.1 — VISUALS · UI · ESP · HUD · BOOT
+-- Cole LOGO APÓS o Bloco 1
 --==============================================================
 
+-- [V11.1] ReShade / Visuals
 HB_Visuals = {enabled=true, preset="Tryhard", saturation=0.22, contrast=0.18,
     brightness=0.02, tintColor=c3(255, 245, 235),
     bloomIntensity=0.55, bloomSize=22, bloomThreshold=1.45,
@@ -1689,6 +2091,7 @@ function HB_RemoveVisuals()
     for _, o in ipairs_(L:GetChildren()) do if sfind(o.Name, "HB_") then o:Destroy() end end
 end
 
+-- Anti-Void
 local VoidGuardAccum = 0
 HB_CONNS[#HB_CONNS+1] = RS_Heartbeat:Connect(function(dt)
     if not S.AntiVoid then return end
@@ -1713,6 +2116,7 @@ HB_CONNS[#HB_CONNS+1] = RS_Heartbeat:Connect(function(dt)
     end
 end)
 
+-- Cam Guard
 local CamGuardAccum = 0
 HB_CONNS[#HB_CONNS+1] = RS_Heartbeat:Connect(function(dt)
     CamGuardAccum = CamGuardAccum + dt
@@ -1737,6 +2141,7 @@ HB_CONNS[#HB_CONNS+1] = RS_Heartbeat:Connect(function(dt)
     end
 end)
 
+-- Gun Drop ESP
 HB_GunDrop = {active=nil, highlight=nil, billboard=nil}
 local GUNDROP_NAMES = {"GunDrop", "Gun Drop", "GunDrop1", "DroppedGun", "GunDropModel"}
 local function HB_FindGunDrop()
@@ -1896,84 +2301,9 @@ function TimelineGetDot()
     return dot
 end
 
-print("[HELLBORN] CORE OK — HACK MODE · WALL ON · CROSS OFF · ESP FULL · 1MS · 12 ITER · 1 TIRO")
+print("[HELLBORN V11.1] VISUALS OK — ReShade · AntiVoid · GunDropESP · Effects")
 
-UIS_InputBegan:Connect(function(input, gp)
-    if gp then return end
-    if input.UserInputType == E_KEYBOARD then
-        local kc = input.KeyCode
-        if kc == S.FlickKey then
-            Flick.keyHeld = true
-            if not Flick.active then
-                local now = tick()
-                if S.PostKillDelay and now < PostKillTimer.until_ then return end
-                if S.AntiFlickBlock and now < AntiFlickGuard.backoffUntil then return end
-                if S.HoldToFlick then return end
-                local q = FindMurderQueue()
-                if #q > 0 then
-                    Flick.lastFlickEnd = 0
-                    TriggerSuppressUntil = now + 0.50
-                    StartFlick(q[1], "manual")
-                end
-            end
-        elseif kc == Enum.KeyCode.Insert then
-            if UI and UI.Main then UI.Main.Visible = not UI.Main.Visible end
-        elseif kc == Enum.KeyCode.F1 then
-            S.AutoFlick=false S.TrigOn=false S.ESP=false
-            HB_ForceRestoreCamera(); HB_Toast("PANIC", "danger")
-        elseif kc == Enum.KeyCode.F6 then
-            HB_ForceRestoreCamera(); HB_Toast("Câmera OK", "success")
-        elseif kc == Enum.KeyCode.F4 then HB_ApplyUltra()
-        elseif kc == Enum.KeyCode.F5 then HB_ApplyUltra()
-        elseif kc == Enum.KeyCode.F7 then HB_ApplyUltra()
-        elseif kc == Enum.KeyCode.F8 then HB_ApplyUltra()
-        elseif kc == Enum.KeyCode.F9 then HB_ApplyUltra() end
-    end
-end)
-UIS_InputEnded:Connect(function(input)
-    if input.UserInputType == E_KEYBOARD and input.KeyCode == S.FlickKey then
-        Flick.keyHeld = false
-        if S.HoldToFlick and not Flick.active and S.AutoFlick then
-            local now = tick()
-            if S.AntiFlickBlock and now < AntiFlickGuard.backoffUntil then return end
-            local q = FindMurderQueue()
-            if #q > 0 then StartFlick(q[1], "hold-release") end
-        end
-    end
-end)
-LP.Chatted:Connect(function(msg)
-    if not S.ChatCommands then return end
-    local cmd, arg = msg:match("^/hb%s+(%S+)%s*(.*)")
-    if not cmd then return end
-    if cmd == "flick" then S.AutoFlick = (arg ~= "off")
-    elseif cmd == "esp" then S.ESP = (arg ~= "off")
-    elseif cmd == "trigger" then S.TrigOn = (arg ~= "off")
-    elseif cmd == "ultra" then HB_ApplyUltra(); HB_Toast("HACK MODE aplicado","danger")
-    elseif cmd == "slot1" then S.PullSlot1 = (arg ~= "off"); HB_Toast("Slot1 "..tostring(S.PullSlot1),"success")
-    elseif cmd == "oneshot" then S.OneShotPerfect = (arg ~= "off"); HB_Toast("OneShot "..tostring(S.OneShotPerfect),"success")
-    elseif cmd == "lead" then S.OneShotLead = (arg ~= "off"); HB_Toast("Lead "..tostring(S.OneShotLead),"success")
-    elseif cmd == "grav" then S.OneShotGravity = (arg ~= "off"); HB_Toast("Grav "..tostring(S.OneShotGravity),"success")
-    elseif cmd == "adapt" then S.OneShotAdaptive = (arg ~= "off"); HB_Toast("Adapt "..tostring(S.OneShotAdaptive),"success")
-    elseif cmd == "cross" then S.Cross = (arg ~= "off"); if HB_BuildCrosshair then HB_BuildCrosshair() end; HB_Toast("Cross "..tostring(S.Cross),"success")
-    elseif cmd == "wallcheck" then S.WallCheck = true; HB_Toast("WallCheck ON (travado)","success")
-    elseif cmd == "stretch" then
-        S.ScreenStretch = (arg ~= "off"); HB_ApplyScreenStretch()
-        HB_Toast("Stretch "..tostring(S.ScreenStretch),"success")
-    elseif cmd == "fov" then
-        local n = tonumber(arg)
-        if n and n >= 20 and n <= 120 then
-            S.ScreenStretch = true; S.ScreenStretchPreset = "Custom"
-            S.ScreenStretchFOV = floor(n); HB_ApplyScreenStretch()
-            HB_Toast("FOV: "..S.ScreenStretchFOV,"success")
-        end
-    elseif cmd == "resetscreen" then HB_ResetScreenStretch(); HB_Toast("Tela resetada","success")
-    elseif cmd == "gundrop" then S.GunDropESP = (arg ~= "off"); HB_Toast("GunDrop "..tostring(S.GunDropESP),"success")
-    elseif cmd == "fixcam" then HB_ForceRestoreCamera(); HB_Toast("Câmera OK","success")
-    elseif cmd == "panic" then S.AutoFlick=false S.TrigOn=false S.ESP=false; HB_Toast("Panic!","danger")
-    elseif cmd == "hide" then if UI and UI.Main then UI.Main.Visible=false end
-    elseif cmd == "show" then if UI and UI.Main then UI.Main.Visible=true end end
-end)
-
+-- UI Setup
 UI = {}; UI.Registered = {}; UI.MainTabs = {}; UI.SubTabs = {}
 UI.TabContents = {}
 UI.CurrentMain = nil; UI.CurrentSub = nil
@@ -2003,13 +2333,13 @@ UI_header = HB_Create("Frame", {
 HB_Corner(UI_header, 12)
 HB_Create("TextLabel", {
     Size=newUD2(0,420,0,20), Position=newUD2(0,16,0,8),
-    BackgroundTransparency=1, Text="💀 HELLBORN v10.1 · HACK MODE",
+    BackgroundTransparency=1, Text="💀 HELLBORN v11.1 · V11.1 MAX RAGE",
     Font=E_GOTHAM_BLACK, TextSize=16, TextColor3=Palette.TextHigh,
     TextXAlignment=E_TXT_LEFT, ZIndex=12
 }, UI_header)
 HB_Create("TextLabel", {
-    Size=newUD2(0,420,0,12), Position=newUD2(0,16,0,30),
-    BackgroundTransparency=1, Text="1MS · 12 ITER · 1 TIRO · WALL ON · HRP ROTATION · FOV 95 · "..HB_SERIAL,
+    Size=newUD2(0,520,0,12), Position=newUD2(0,16,0,30),
+    BackgroundTransparency=1, Text="1MS · 15 ITER · 1 TIRO · WALL ON · KALMAN6D · PROJ SIM · STRAFE · "..HB_SERIAL,
     Font=E_CODE, TextSize=9, TextColor3=Palette.Accent,
     TextXAlignment=E_TXT_LEFT, ZIndex=12
 }, UI_header)
@@ -2184,6 +2514,7 @@ for i, def in ipairs_(UI.TabDefs) do
     btn.Activated:Connect(function() UI.switchMain(def.name) end)
 end
 
+-- Cmp components
 Cmp = {}
 local function Cmp_reg(p, n, k)
     UI.Registered[#UI.Registered+1] = {parent=p, name=slower(n), keywords=k and slower(k) or ""}
@@ -2407,20 +2738,21 @@ end
 
 local P = UI.TabContents
 
+-- AIM TABS
 do local p = P["AIM/Core"]
-    Cmp.Section(p, "🎯 HACK MODE · 12 ITER · 1 TIRO · 1MS")
+    Cmp.Section(p, "🎯 V11.1 · 15 ITER · 1 TIRO · 1MS")
     Cmp.Toggle(p, {text="Auto Flick", default=true, callback=function(v) S.AutoFlick=v end})
-    Cmp.Toggle(p, {text="Pull Slot 1", default=true, desc="Sempre puxa a arma da hotbar 1 antes de atirar", callback=function(v) S.PullSlot1=v end})
+    Cmp.Toggle(p, {text="Pull Slot 1", default=true, desc="Sempre puxa a arma da hotbar 1", callback=function(v) S.PullSlot1=v end})
     Cmp.Keybind(p, {text="Flick Key", default=S.FlickKey, callback=function(kc) S.FlickKey=kc end})
     Cmp.Slider(p, {text="Align Tolerance", min=0, max=15, default=0, suffix="°", callback=function(v) S.AlignTol=v end})
     Cmp.Slider(p, {text="Aim Smooth", min=0, max=100, default=0, suffix="%", callback=function(v) S.AimSmooth=v/100 end})
     Cmp.Section(p, "🎯 SILENT (HACK)")
     Cmp.Toggle(p, {text="Silent Aim", default=true, callback=function(v) S.SilentOn=v end})
     Cmp.Toggle(p, {text="Random Aim", default=false, callback=function(v) S.RandomAim=v end})
-    Cmp.Toggle(p, {text="Humanize", default=false, callback=function(v) S.Humanize=v end})
+    Cmp.Toggle(p, {text="Humanize (jitter)", default=false, callback=function(v) S.Humanize=v end})
 end
 do local p = P["AIM/Targeting"]
-    Cmp.Section(p, "🎯 ALVO (HACK MODE)")
+    Cmp.Section(p, "🎯 ALVO (V11.1)")
     Cmp.Dropdown(p, {text="Prioridade", options={"murderer","closest","lowest_hp","most_dangerous"}, default="murderer", callback=function(o) S.RagePriority=o end})
     Cmp.Dropdown(p, {text="Parte", options={"Head","Torso","HumanoidRootPart","Neck"}, default="Head", callback=function(o) S.AimPart=o end})
     Cmp.Toggle(p, {text="Smart Target", default=true, callback=function(v) S.SmartTarget=v end})
@@ -2436,7 +2768,7 @@ do local p = P["AIM/Targeting"]
     Cmp.Toggle(p, {text="Closest to Crosshair", default=true, callback=function(v) S.ClosestToCrosshair=v end})
 end
 do local p = P["AIM/Prediction"]
-    Cmp.Section(p, "👁 PREDIÇÃO (12-pass + FPS-aware)")
+    Cmp.Section(p, "👁 PREDIÇÃO (15-pass + Kalman6D + FPS-aware)")
     Cmp.Toggle(p, {text="Ping Compensate", default=true, callback=function(v) S.PingCompensate=v end})
     Cmp.Toggle(p, {text="Latency Prediction", default=true, callback=function(v) S.LatencyPrediction=v end})
     Cmp.Toggle(p, {text="History Tracker", default=true, callback=function(v) S.HistoryTracker=v end})
@@ -2444,7 +2776,7 @@ do local p = P["AIM/Prediction"]
     Cmp.Toggle(p, {text="Moving Target Predict", default=true, callback=function(v) S.MovingTargetPredict=v end})
     Cmp.Toggle(p, {text="Kalman Predict V2", default=true, callback=function(v) S.KalmanPredictV2=v end})
     Cmp.Slider(p, {text="Kalman Tempo", min=1, max=100, default=1, suffix=" ×10ms", callback=function(v) S.KalmanPredTime=v/100 end})
-    Cmp.Toggle(p, {text="Juke Counter", default=true, callback=function(v) S.JukeCounter=v end})
+    Cmp.Toggle(p, {text="Juke Counter (strafe)", default=true, callback=function(v) S.JukeCounter=v end})
     Cmp.Toggle(p, {text="Velocity Match", default=true, callback=function(v) S.VelocityMatch=v end})
     Cmp.Toggle(p, {text="Strafe Detector", default=true, callback=function(v) S.StrafeDetector=v end})
     Cmp.Toggle(p, {text="Jump Predictor", default=true, callback=function(v) S.JumpPredictor=v end})
@@ -2452,13 +2784,13 @@ do local p = P["AIM/Prediction"]
     Cmp.Toggle(p, {text="First-Visual Lock", default=true, callback=function(v) S.FirstVisualLock=v end})
 end
 do local p = P["AIM/TriggerBot"]
-    Cmp.Section(p, "⚡ TRIGGER BOT (OFF por padrão)")
+    Cmp.Section(p, "⚡ TRIGGER BOT (V11.1 com LOS cache)")
     Cmp.Toggle(p, {text="Trigger Bot", default=false, callback=function(v) S.TrigOn=v end})
     Cmp.Slider(p, {text="Radius", min=10, max=300, default=300, suffix=" px", callback=function(v) S.TrigRad=v end})
     Cmp.Slider(p, {text="Cooldown", min=1, max=100, default=1, suffix=" ×10ms", callback=function(v) S.TrigCD=v/100 end})
 end
 do local p = P["AIM/Anti-Detect"]
-    Cmp.Section(p, "🛡 ANTI-DETECT (HACK: tudo OFF)")
+    Cmp.Section(p, "🛡 ANTI-DETECT")
     Cmp.Toggle(p, {text="Rate Limiter", default=false, callback=function(v) S.RateLimit=v end})
     Cmp.Toggle(p, {text="Fake Miss", default=false, callback=function(v) S.FakeMiss=v end})
     Cmp.Toggle(p, {text="Anti-Flick Block", default=false, callback=function(v) S.AntiFlickBlock=v end})
@@ -2467,7 +2799,7 @@ do local p = P["AIM/Anti-Detect"]
     Cmp.Slider(p, {text="Post-Kill Delay", min=0, max=1000, default=0, suffix=" ms", callback=function(v) S.PostKillDelayMs=v end})
 end
 do local p = P["AIM/Locks"]
-    Cmp.Section(p, "🔒 TRAVAS (HACK MODE)")
+    Cmp.Section(p, "🔒 TRAVAS (V11.1)")
     Cmp.Toggle(p, {text="Single Shot Lock", default=true, callback=function(v) S.SingleShotLock=v end})
     Cmp.Toggle(p, {text="Single Kill Lock", default=true, callback=function(v) S.SingleKillLock=v end})
     Cmp.Slider(p, {text="Cooldown pós-kill", min=0, max=200, default=0, suffix=" ×10ms", callback=function(v) S.KillCooldown=v/100 end})
@@ -2479,15 +2811,16 @@ do local p = P["AIM/Locks"]
     Cmp.Toggle(p, {text="Cooldown Visual", default=false, callback=function(v) S.ShowCooldownVisual=v end})
 end
 
+-- FLICK TABS
 do local p = P["FLICK/Timings"]
-    Cmp.Section(p, "⚔ TIMINGS (HACK MODE — 1ms MIN)")
+    Cmp.Section(p, "⚔ TIMINGS V11.1")
     Cmp.Slider(p, {text="Snap (câmera vai)", min=1, max=100, default=1, suffix="ms", callback=function(v) Flick.snapDur=v/1000 end})
     Cmp.Slider(p, {text="Hold", min=1, max=300, default=1, suffix="ms", callback=function(v) Flick.holdDur=v/1000 end})
-    Cmp.Slider(p, {text="Verify", min=1, max=800, default=150, suffix="ms", callback=function(v) Flick.verifyWait=v/1000 end})
+    Cmp.Slider(p, {text="Verify", min=1, max=800, default=250, suffix="ms", callback=function(v) Flick.verifyWait=v/1000 end})
     Cmp.Slider(p, {text="Return (câmera volta)", min=1, max=300, default=1, suffix="ms", callback=function(v) Flick.returnDur=v/1000 end})
 end
 do local p = P["FLICK/Pro"]
-    Cmp.Section(p, "🎬 PRO (HACK: tudo OFF)")
+    Cmp.Section(p, "🎬 PRO (HACK: OFF)")
     Cmp.Toggle(p, {text="Modo Pro", default=false, callback=function(v) Flick.proMode=v end})
     Cmp.Toggle(p, {text="Reaction Delay", default=false, callback=function(v) Flick.reactionDelay = v and 0.001 or 0 end})
     Cmp.Slider(p, {text="Reaction (ms)", min=1, max=150, default=1, callback=function(v) Flick.reactionDelay=v/1000 end})
@@ -2501,30 +2834,36 @@ do local p = P["FLICK/Pro"]
     Cmp.Slider(p, {text="Jitter Rate (Hz)", min=10, max=80, default=10, callback=function(v) Flick.microJitterRate=v end})
 end
 do local p = P["FLICK/1-Shot"]
-    Cmp.Section(p, "🎯 HACK MODE — 1 TIRO + WALL CHECK + RETRY")
+    Cmp.Section(p, "🎯 V11.1 — 1 TIRO + WALL + KALMAN6D + PROJECTILE SIM")
     Cmp.Toggle(p, {text="One Shot Perfeito", default=true,
-        desc="1 tiro por flick · HRP rotation · 12 iter lead · multipoint LOS scan",
+        desc="1 tiro por flick · HRP rotation · 15 iter · Kalman6D · projectile sim para guns",
         callback=function(v) S.OneShotPerfect=v end})
     Cmp.Toggle(p, {text="Lead + Ping Suavizado", default=true,
         desc="Cinemática (p+v·t+½·a·t²) + FPS-aware + ping 8-amostras",
         callback=function(v) S.OneShotLead=v end})
     Cmp.Toggle(p, {text="Gravidade", default=true,
-        desc="Compensa queda de bala em armas não-hitscan", callback=function(v) S.OneShotGravity=v end})
+        desc="Compensa queda de bala em armas não-hitscan",
+        callback=function(v) S.OneShotGravity=v end})
     Cmp.Toggle(p, {text="Adaptativo (decay)", default=true,
-        desc="Aprende offset com decaimento temporal", callback=function(v) S.OneShotAdaptive=v end})
+        desc="Aprende offset com decaimento temporal + AutoTune global",
+        callback=function(v) S.OneShotAdaptive=v end})
     Cmp.Toggle(p, {text="Retry Automático", default=true,
-        desc="Se 1ª bala missar, re-aim + re-fire UMA vez", callback=function(v) S.RetryMiss=v end})
-    Cmp.Section(p, "🎯 LOS LOCK (HACK MODE)")
-    Cmp.Button(p, {text="ℹ️ Como funciona", callback=function()
-        HB_Toast("Lead 12-pass → Head grid (14 pts) → Neck → UpperTorso → HRP → primeiro com LOS vira alvo → 1 tiro HRP-rotacionado → verify 150ms → retry se missar", "info")
-    end})
+        desc="Retry só se alvo moveu > 1.2 studs (evita spam)",
+        callback=function(v) S.RetryMiss=v end})
+    Cmp.Section(p, "🎯 STRAFE + PROJECTILE (V11.1)")
+    Cmp.Toggle(p, {text="Strafe Detector", default=true,
+        desc="Detecta padrão de strafe e prevê a próxima inversão",
+        callback=function(v) S.JukeCounter=v end})
+    Cmp.Toggle(p, {text="Projectile Sim (guns)", default=true,
+        desc="Simula bala real contra corpo em 3 alturas",
+        callback=function(v) S.OneShotGravity=v end})
     Cmp.Section(p, "⚙ AJUSTES")
     Cmp.Toggle(p, {text="One Shot (1 bala)", default=true, callback=function(v) Flick.oneShot=v end})
     Cmp.Slider(p, {text="Post-Shot Settle (ms)", min=0, max=200, default=0, callback=function(v) Flick.postShotSettle=v/1000 end})
-    Cmp.Slider(p, {text="Iterações", min=1, max=20, default=12, callback=function(v) S.OneShotIterations=v end})
+    Cmp.Slider(p, {text="Iterações", min=1, max=25, default=15, callback=function(v) S.OneShotIterations=v end})
 end
 do local p = P["FLICK/Advanced"]
-    Cmp.Section(p, "⚙ CURVAS (HACK: tudo OFF)")
+    Cmp.Section(p, "⚙ CURVAS (HACK: OFF)")
     Cmp.Toggle(p, {text="Multi-Step Snap", default=false, callback=function(v) S.Adv_MultiStepSnap=v end})
     Cmp.Slider(p, {text="Steps", min=2, max=6, default=3, callback=function(v) S.Adv_MultiStepN=v end})
     Cmp.Toggle(p, {text="Bezier Snap", default=false, callback=function(v) S.Adv_BezierSnap=v end})
@@ -2543,11 +2882,11 @@ do local p = P["FLICK/Advanced"]
     Cmp.Slider(p, {text="Cancel Window", min=1, max=20, default=1, suffix=" ms", callback=function(v) S.Adv_CancelMs=v end})
 end
 do local p = P["FLICK/WallCheck"]
-    Cmp.Section(p, "🧱 WALL CHECK (TRAVADO ON)")
-    Cmp.Toggle(p, {text="Wall Check (LOS)", default=true, callback=function(v) S.WallCheck=true; HB_Toast("WallCheck travado ON","success") end})
+    Cmp.Section(p, "🧱 WALL CHECK (V11.1 — 2 RAYCASTS)")
+    Cmp.Toggle(p, {text="Wall Check (LOS)", default=true, callback=function(v) S.WallCheck=true; HB_Toast("WallCheck ON","success") end})
     Cmp.Slider(p, {text="Distância Máx", min=100, max=9999, default=9999, suffix=" st", callback=function(v) S.FlickMaxDist=v end})
-    Cmp.Button(p, {text="ℹ️ Wall Check travado ligado", callback=function()
-        HB_Toast("WallCheck é forçado ON — não pode desativar. Raycast do Head do jogador até o alvo antes de cada fire.", "info")
+    Cmp.Button(p, {text="ℹ️ V11.1: Include+Exclude (2 raycasts)", callback=function()
+        HB_Toast("VerifyLOS usa 2 raycasts — Include acha corpo, Exclude confirma LOS", "info")
     end})
 end
 do local p = P["FLICK/Camera"]
@@ -2560,38 +2899,37 @@ do local p = P["FLICK/Camera"]
     Cmp.Slider(p, {text="Lift", min=3, max=30, default=20, callback=function(v) S.AntiVoidLift=v end})
 end
 do local p = P["FLICK/Modes"]
-    Cmp.Section(p, "💀 HACK MODE (ÚNICO MODO)")
-    Cmp.Button(p, {text="💀 APLICAR HACK MODE (1ms · 12 iter · 1 tiro)", danger=true, callback=function()
-        HB_ApplyUltra()
-        HB_Toast("HACK MODE aplicado","danger")
+    Cmp.Section(p, "💀 V11.1 HACK MODE")
+    Cmp.Button(p, {text="💀 APLICAR HACK MODE V11.1", danger=true, callback=function()
+        HB_ApplyUltra(); HB_Toast("HACK MODE V11.1 aplicado","danger")
     end})
     Cmp.Section(p, "⚙ TESTES RÁPIDOS")
     Cmp.Button(p, {text="🐢 LENTO (400ms) só pra debug", danger=true, callback=function()
-        Flick.snapDur=0.400 Flick.returnDur=0.400
-        HB_Toast("Slow 400ms","warning")
+        Flick.snapDur=0.400 Flick.returnDur=0.400; HB_Toast("Slow 400ms","warning")
     end})
-    Cmp.Button(p, {text="⚡ Voltar pra 1ms HACK", callback=function()
-        Flick.snapDur=0.001 Flick.holdDur=0.001 Flick.returnDur=0.001 Flick.verifyWait=0.150
+    Cmp.Button(p, {text="⚡ Voltar pra 1ms V11.1", callback=function()
+        Flick.snapDur=0.001 Flick.holdDur=0.001 Flick.returnDur=0.001 Flick.verifyWait=0.250
         HB_Toast("1ms restaurado","success")
     end})
 end
 
+-- ESP TABS
 do local p = P["ESP/Basic"]
-    Cmp.Section(p, "◉ ESP (HACK MODE: ON)")
+    Cmp.Section(p, "◉ ESP")
     Cmp.Toggle(p, {text="ESP ATIVADO", default=true, callback=function(v) S.ESP=v end})
     Cmp.Toggle(p, {text="Box", default=true, callback=function(v) S.ESPBox=v end})
     Cmp.Toggle(p, {text="Tracer", default=true, callback=function(v) S.ESPTracer=v end})
     Cmp.Slider(p, {text="Espessura", min=1, max=8, default=5, callback=function(v) S.ESPThick=v end})
 end
 do local p = P["ESP/Info"]
-    Cmp.Section(p, "◉ INFO (HACK: tudo ON)")
+    Cmp.Section(p, "◉ INFO")
     Cmp.Toggle(p, {text="Nome + Role", default=true, callback=function(v) S.ESPName=v end})
     Cmp.Toggle(p, {text="Distância", default=true, callback=function(v) S.ESPDist=v end})
     Cmp.Toggle(p, {text="Health Bar", default=true, callback=function(v) S.ESPHealth=v end})
     Cmp.Toggle(p, {text="Weapon", default=true, callback=function(v) S.ESPWeapon=v end})
 end
 do local p = P["ESP/Filter"]
-    Cmp.Section(p, "◉ FILTRO (HACK: ver tudo)")
+    Cmp.Section(p, "◉ FILTRO")
     Cmp.Toggle(p, {text="Mostrar Innocents", default=true, callback=function(v) S.ESPShowInnocents=v end})
     Cmp.Toggle(p, {text="Mostrar Sheriff", default=true, callback=function(v) S.ESPShowSheriff=v end})
     Cmp.Button(p, {text="🔄 Refresh Roles", callback=function()
@@ -2601,7 +2939,7 @@ do local p = P["ESP/Filter"]
     end})
 end
 do local p = P["ESP/Visual"]
-    Cmp.Section(p, "◉ VISUAL (HACK: tudo ON)")
+    Cmp.Section(p, "◉ VISUAL")
     Cmp.Toggle(p, {text="Fill (fundo)", default=true, callback=function(v) S.ESPFill=v end})
     Cmp.Slider(p, {text="Fill Transparency", min=0, max=100, default=70, suffix="%", callback=function(v) S.ESPFillTransparency=v/100 end})
     Cmp.Toggle(p, {text="Chams (Highlight)", default=true, callback=function(v) S.Chams=v end})
@@ -2612,53 +2950,44 @@ do local p = P["ESP/Visual"]
 end
 do local p = P["ESP/GunDrop"]
     Cmp.Section(p, "🔫 GUN DROP ESP")
-    Cmp.Toggle(p, {text="Gun Drop ESP Ativado", default=true,
-        desc="Destaca a arma caída do Sheriff (atravessa paredes)",
-        callback=function(v) S.GunDropESP=v end})
-    Cmp.Toggle(p, {text="Mostrar Texto 'ARMA CAÍDA'", default=true,
-        callback=function(v) S.GunDropESPText=v end})
-    Cmp.Toggle(p, {text="Mostrar Distância", default=true,
-        callback=function(v) S.GunDropESPDistance=v end})
+    Cmp.Toggle(p, {text="Gun Drop ESP Ativado", default=true, desc="Destaca a arma caída do Sheriff", callback=function(v) S.GunDropESP=v end})
+    Cmp.Toggle(p, {text="Mostrar Texto 'ARMA CAÍDA'", default=true, callback=function(v) S.GunDropESPText=v end})
+    Cmp.Toggle(p, {text="Mostrar Distância", default=true, callback=function(v) S.GunDropESPDistance=v end})
     Cmp.Section(p, "🎨 VISUAL")
-    Cmp.Slider(p, {text="Fill Transparency", min=0, max=100, default=50, suffix="%",
-        callback=function(v) S.GunDropESPFill=v/100; _G.HB.RefreshGunDropESP() end})
-    Cmp.Slider(p, {text="Outline Transparency", min=0, max=100, default=30, suffix="%",
-        callback=function(v) S.GunDropESPOutlineT=v/100; _G.HB.RefreshGunDropESP() end})
+    Cmp.Slider(p, {text="Fill Transparency", min=0, max=100, default=50, suffix="%", callback=function(v) S.GunDropESPFill=v/100; HB_G.RefreshGunDropESP() end})
+    Cmp.Slider(p, {text="Outline Transparency", min=0, max=100, default=30, suffix="%", callback=function(v) S.GunDropESPOutlineT=v/100; HB_G.RefreshGunDropESP() end})
     Cmp.Button(p, {text="🟡 Amarelo Dourado (padrão)", callback=function()
         S.GunDropESPColor=c3(255,210,40) S.GunDropESPOutline=c3(255,255,255)
-        S.GunDropESPTextColor=c3(255,210,40)
-        if _G.HB.RefreshGunDropESP then _G.HB.RefreshGunDropESP() end
+        S.GunDropESPTextColor=c3(255,210,40); HB_G.RefreshGunDropESP()
     end})
     Cmp.Button(p, {text="🔴 Vermelho", callback=function()
         S.GunDropESPColor=c3(255,60,60) S.GunDropESPOutline=c3(255,255,255)
-        S.GunDropESPTextColor=c3(255,120,120)
-        if _G.HB.RefreshGunDropESP then _G.HB.RefreshGunDropESP() end
+        S.GunDropESPTextColor=c3(255,120,120); HB_G.RefreshGunDropESP()
     end})
     Cmp.Button(p, {text="🟢 Verde Neon", callback=function()
         S.GunDropESPColor=c3(0,255,120) S.GunDropESPOutline=c3(255,255,255)
-        S.GunDropESPTextColor=c3(120,255,180)
-        if _G.HB.RefreshGunDropESP then _G.HB.RefreshGunDropESP() end
+        S.GunDropESPTextColor=c3(120,255,180); HB_G.RefreshGunDropESP()
     end})
 end
 
+-- VISUAL TABS
 do local p = P["VISUAL/HUD"]
-    Cmp.Section(p, "✦ HUD (HACK MODE)")
+    Cmp.Section(p, "✦ HUD")
     Cmp.Toggle(p, {text="Hitmarker", default=true, callback=function(v) S.Hitmark=v end})
     Cmp.Toggle(p, {text="Kill Feed", default=true, callback=function(v) S.KillFeed=v end})
     Cmp.Toggle(p, {text="Crosshair", default=false, callback=function(v) S.Cross=v end})
     Cmp.Toggle(p, {text="Impact Flash", default=true, callback=function(v) S.FB_ImpactFlash=v end})
 end
 do local p = P["VISUAL/Crosshair"]
-    Cmp.Section(p, "✦ CROSSHAIR (SHARINGAN) — HACK: OFF")
+    Cmp.Section(p, "✦ CROSSHAIR (SHARINGAN) — OFF")
     Cmp.Toggle(p, {text="Crosshair Ativado", default=false, callback=function(v)
         S.Cross=v
         if HB_BuildCrosshair then HB_BuildCrosshair() end
     end})
-    Cmp.Dropdown(p, {text="Estilo", options={"Sharingan","Dot","Cross","Circle","Hybrid"}, default="Sharingan",
-        callback=function(o)
-            S.CrossStyle=o
-            if HB_BuildCrosshair then HB_BuildCrosshair() end
-        end})
+    Cmp.Dropdown(p, {text="Estilo", options={"Sharingan","Dot","Cross","Circle","Hybrid"}, default="Sharingan", callback=function(o)
+        S.CrossStyle=o
+        if HB_BuildCrosshair then HB_BuildCrosshair() end
+    end})
     Cmp.Slider(p, {text="Tamanho", min=10, max=60, default=32, callback=function(v)
         S.CrossSize=v
         if HB_BuildCrosshair then HB_BuildCrosshair() end
@@ -2690,7 +3019,7 @@ do local p = P["VISUAL/ReShade"]
     Cmp.Toggle(p, {text="Atmosphere", default=true, callback=function(v) HB_Visuals.atmosphereEnabled=v; HB_ApplyVisuals() end})
 end
 do local p = P["VISUAL/Tracers"]
-    Cmp.Section(p, "🎯 TRACERS (HACK)")
+    Cmp.Section(p, "🎯 TRACERS")
     Cmp.Toggle(p, {text="Tracer Ativado", default=true, callback=function(v) HB_Tracer.enabled=v end})
     Cmp.Toggle(p, {text="Tracer em Faca", default=true, callback=function(v) HB_Tracer.ignoreHitscan=v end})
     Cmp.Slider(p, {text="Duração", min=5, max=100, default=40, suffix=" ×10ms", callback=function(v) HB_Tracer.lifetime=v/100 end})
@@ -2705,13 +3034,10 @@ do local p = P["VISUAL/KillFX"]
 end
 do local p = P["VISUAL/Screen"]
     Cmp.Section(p, "🖥️ SCREEN STRETCH (21:9 Wide · FOV 95)")
-    Cmp.Toggle(p, {text="Screen Stretch Ativado", default=true,
-        desc="Ajusta o FOV pra deixar os alvos maiores (estilo 21:9 CS)",
-        callback=function(v)
-            S.ScreenStretch=v
-            HB_ApplyScreenStretch()
-            HB_Toast("Stretch "..(v and "ON" or "OFF"), v and "success" or "warning")
-        end})
+    Cmp.Toggle(p, {text="Screen Stretch Ativado", default=true, callback=function(v)
+        S.ScreenStretch=v; HB_ApplyScreenStretch()
+        HB_Toast("Stretch "..(v and "ON" or "OFF"), v and "success" or "warning")
+    end})
     Cmp.Dropdown(p, {text="Preset", default="21:9 Wide",
         options={"Normal","4:3 Stretch","5:4 Stretch","16:10 Stretch","21:9 Wide","Rage Zoom","Ultra Rage","Custom"},
         callback=function(o)
@@ -2724,13 +3050,12 @@ do local p = P["VISUAL/Screen"]
             HB_Toast("Preset: "..o, "success")
         end})
     Cmp.Section(p, "🎛️ CUSTOM")
-    Cmp.Slider(p, {text="FOV Custom", min=20, max=120, default=95,
-        callback=function(v)
-            S.ScreenStretchPreset = "Custom"
-            S.ScreenStretchFOV = v
-            S.ScreenStretch = true
-            HB_ApplyScreenStretch()
-        end})
+    Cmp.Slider(p, {text="FOV Custom", min=20, max=120, default=95, callback=function(v)
+        S.ScreenStretchPreset = "Custom"
+        S.ScreenStretchFOV = v
+        S.ScreenStretch = true
+        HB_ApplyScreenStretch()
+    end})
     Cmp.Section(p, "📐 PRESETS RÁPIDOS")
     Cmp.Button(p, {text="🎮 Normal (FOV 70)", callback=function()
         S.ScreenStretch=true S.ScreenStretchPreset="Normal" S.ScreenStretchFOV=70
@@ -2740,23 +3065,23 @@ do local p = P["VISUAL/Screen"]
         HB_ApplyScreenStretch(); HB_Toast("4:3 RAGE", "danger") end})
     Cmp.Button(p, {text="🌌 21:9 Wide (FOV 95) ⭐ PADRÃO", callback=function()
         S.ScreenStretch=true S.ScreenStretchPreset="21:9 Wide" S.ScreenStretchFOV=95
-        HB_ApplyScreenStretch(); HB_Toast("21:9 Wide PADRÃO", "success") end})
+        HB_ApplyScreenStretch(); HB_Toast("21:9 Wide", "success") end})
     Cmp.Button(p, {text="💀 Ultra Rage (FOV 32)", danger=true, callback=function()
         S.ScreenStretch=true S.ScreenStretchPreset="Ultra Rage" S.ScreenStretchFOV=32
         HB_ApplyScreenStretch(); HB_Toast("ULTRA RAGE FOV 32", "danger") end})
     Cmp.Section(p, "🔄 RESET")
     Cmp.Button(p, {text="🔄 Reset Tela (FOV 70)", danger=true, callback=function()
-        HB_ResetScreenStretch()
-        HB_Toast("Tela resetada", "warning") end})
+        HB_ResetScreenStretch(); HB_Toast("Tela resetada", "warning") end})
 end
 
+-- IA TABS
 do local p = P["IA/Core"]
     Cmp.Section(p, "◈ IA CORE (HACK: OFF)")
     Cmp.Toggle(p, {text="IA On", default=false, callback=function(v) S.AIOn=v end})
     Cmp.Slider(p, {text="NN Rate", min=1, max=50, default=10, suffix=" ‰", callback=function(v) S.NNRate=v/1000 end})
 end
 do local p = P["IA/RevIA"]
-    Cmp.Section(p, "⚡ REV IA (HACK: tudo OFF)")
+    Cmp.Section(p, "⚡ REV IA (HACK: OFF)")
     local list = {{"Meta-Learning","meta"},{"NAS","nas"},{"Behavioural Cloning","cloning"},
         {"Self-Play","selfPlay"},{"World Model","worldModel"},{"Active Inference","activeInf"},
         {"Transformer","transformer"},{"MoE","moe"},{"Uncertainty","uncert"},{"Causal","causal"},
@@ -2768,7 +3093,7 @@ do local p = P["IA/RevIA"]
     end
 end
 do local p = P["IA/RevHuman"]
-    Cmp.Section(p, "🧠 HUMANA (HACK: tudo OFF)")
+    Cmp.Section(p, "🧠 HUMANA (HACK: OFF)")
     Cmp.Toggle(p, {text="Warmup", default=false, callback=function(v) S.REV_HUMAN.warmup=v end})
     Cmp.Toggle(p, {text="Emotion", default=false, callback=function(v) S.REV_HUMAN.emotion=v end})
     Cmp.Toggle(p, {text="Cognitive", default=false, callback=function(v) S.REV_HUMAN.cognitive=v end})
@@ -2834,19 +3159,19 @@ do local p = P["IA/RevMad"]
     Cmp.Toggle(p, {text="Recursive", default=false, callback=function(v) S.REV_MAD.recursive=v end})
 end
 
+-- SPEED
 do local p = P["SPEED/Base"]
-    Cmp.Section(p, "⚡ BASE — HACK MODE (1ms MIN)")
+    Cmp.Section(p, "⚡ BASE — V11.1 (1ms MIN)")
     Cmp.Slider(p, {text="Snap (ms)", min=1, max=500, default=1, suffix="ms", callback=function(v) Flick.snapDur=v/1000 end})
     Cmp.Slider(p, {text="Hold (ms)", min=1, max=500, default=1, suffix="ms", callback=function(v) Flick.holdDur=v/1000 end})
-    Cmp.Slider(p, {text="Verify (ms)", min=1, max=800, default=150, suffix="ms", callback=function(v) Flick.verifyWait=v/1000 end})
+    Cmp.Slider(p, {text="Verify (ms)", min=1, max=800, default=250, suffix="ms", callback=function(v) Flick.verifyWait=v/1000 end})
     Cmp.Slider(p, {text="Return (ms)", min=1, max=500, default=1, suffix="ms", callback=function(v) Flick.returnDur=v/1000 end})
-    Cmp.Button(p, {text="💀 Reaplicar HACK MODE", danger=true, callback=function()
-        HB_ApplyUltra()
-        HB_Toast("HACK MODE reaplicado","danger")
+    Cmp.Button(p, {text="💀 Reaplicar V11.1 HACK MODE", danger=true, callback=function()
+        HB_ApplyUltra(); HB_Toast("V11.1 HACK MODE reaplicado","danger")
     end})
 end
 do local p = P["SPEED/Advanced"]
-    Cmp.Section(p, "🚀 AVANÇADO — HACK MODE (tudo ON)")
+    Cmp.Section(p, "🚀 AVANÇADO")
     Cmp.Slider(p, {text="Max Cycles", min=1, max=20, default=3, callback=function(v) S.MaxCycles=v end})
     Cmp.Slider(p, {text="Cycle Return (ms)", min=1, max=100, default=1, suffix="ms", callback=function(v) S.CycleReturnMs=v end})
     Cmp.Toggle(p, {text="Sub-1ms Snap", default=true, callback=function(v) S.Sub1msSnap=v end})
@@ -2859,23 +3184,22 @@ do local p = P["SPEED/Advanced"]
     Cmp.Toggle(p, {text="Slow-Mo Flick", default=false, callback=function(v) S.SlowMoFlick=v end})
 end
 
+-- MODES
 do local p = P["MODES/FlickModes"]
-    Cmp.Section(p, "💀 HACK MODE (ÚNICO)")
-    Cmp.Button(p, {text="💀 APLICAR HACK MODE", danger=true, callback=function()
-        HB_ApplyUltra()
-        HB_Toast("HACK MODE aplicado","danger")
+    Cmp.Section(p, "💀 V11.1 HACK MODE")
+    Cmp.Button(p, {text="💀 APLICAR V11.1 HACK MODE", danger=true, callback=function()
+        HB_ApplyUltra(); HB_Toast("V11.1 HACK MODE aplicado","danger")
     end})
     Cmp.Button(p, {text="🔧 Restaurar Timings 1ms", callback=function()
-        Flick.snapDur=0.001 Flick.holdDur=0.001 Flick.returnDur=0.001 Flick.verifyWait=0.150
+        Flick.snapDur=0.001 Flick.holdDur=0.001 Flick.returnDur=0.001 Flick.verifyWait=0.250
         HB_Toast("1ms OK","success")
     end})
     Cmp.Button(p, {text="🔄 Reset Câmera", callback=function()
-        HB_ForceRestoreCamera()
-        HB_Toast("Câmera OK","success")
+        HB_ForceRestoreCamera(); HB_Toast("Câmera OK","success")
     end})
 end
 do local p = P["MODES/MM2"]
-    Cmp.Section(p, "🎮 MM2 (HACK: auto-flick ON)")
+    Cmp.Section(p, "🎮 MM2 (V11.1)")
     Cmp.Toggle(p, {text="Knife Auto-Flick", default=true, callback=function(v) S.MM2_KnifeAutoFlick=v end})
     Cmp.Toggle(p, {text="Gun Auto-Flick", default=true, callback=function(v) S.MM2_GunAutoFlick=v end})
     Cmp.Toggle(p, {text="Round-Start Flick", default=true, callback=function(v) S.MM2_RoundStartFlick=v end})
@@ -2884,21 +3208,20 @@ do local p = P["MODES/MM2"]
     Cmp.Toggle(p, {text="Death Flick", default=true, callback=function(v) S.MM2_DeathFlick=v end})
 end
 do local p = P["MODES/Presets"]
-    Cmp.Section(p, "💀 HACK MODE — CONFIG ÚNICA")
-    Cmp.Button(p, {text="💀 APLICAR HACK MODE AGORA", danger=true, callback=function()
-        HB_ApplyUltra()
-        HB_Toast("HACK MODE aplicado","danger")
+    Cmp.Section(p, "💀 V11.1 HACK MODE — CONFIG ÚNICA")
+    Cmp.Button(p, {text="💀 APLICAR AGORA", danger=true, callback=function()
+        HB_ApplyUltra(); HB_Toast("V11.1 HACK MODE","danger")
     end})
     Cmp.Section(p, "ℹ️ INFO")
-    Cmp.Button(p, {text="ℹ️ Por que só uma config?", callback=function()
-        HB_Toast("Presets removidos. HACK MODE é a única e mais forte.", "info")
+    Cmp.Button(p, {text="ℹ️ Config única", callback=function()
+        HB_Toast("V11.1 é a única config. Kalman6D+Projectile+Strafe.", "info")
     end})
     Cmp.Button(p, {text="🔄 Reset Seguro (só câmera)", callback=function()
-        HB_ForceRestoreCamera()
-        HB_Toast("Câmera OK","success")
+        HB_ForceRestoreCamera(); HB_Toast("Câmera OK","success")
     end})
 end
 
+-- FEEDBACK
 do local p = P["FEEDBACK/Visual"]
     Cmp.Section(p, "🎨 VISUAL")
     Cmp.Toggle(p, {text="Flick Trail", default=true, callback=function(v) S.FB_FlickTrail=v end})
@@ -2917,8 +3240,9 @@ do local p = P["FEEDBACK/HUDCounter"]
         S.FB_FlickCounter=v; if FLICK_COUNTER then FLICK_COUNTER.Visible=v end end})
 end
 
+-- ADV
 do local p = P["ADV/Curves"]
-    Cmp.Section(p, "⚙ CURVAS (HACK: OFF)")
+    Cmp.Section(p, "⚙ CURVAS")
     Cmp.Toggle(p, {text="Bezier Snap", default=false, callback=function(v) S.Adv_BezierSnap=v end})
     Cmp.Slider(p, {text="Bezier P1", min=0, max=100, default=25, callback=function(v) S.Adv_BezierP1=v/100 end})
     Cmp.Slider(p, {text="Bezier P2", min=0, max=100, default=75, callback=function(v) S.Adv_BezierP2=v/100 end})
@@ -2937,35 +3261,36 @@ do local p = P["ADV/Extras"]
     Cmp.Slider(p, {text="Cancel Window", min=1, max=20, default=1, suffix=" ms", callback=function(v) S.Adv_CancelMs=v end})
 end
 do local p = P["ADV/Persona"]
-    Cmp.Section(p, "🎭 PERSONA (HACK: aggressive 0%)")
+    Cmp.Section(p, "🎭 PERSONA")
     Cmp.Dropdown(p, {text="Persona", options={"aggressive","cautious","imprevisivel","calculista","casual"},
         default="aggressive", callback=function(o) S.REV_HUMAN.persona=o; PersonaApply() end})
     Cmp.Slider(p, {text="Strength", min=0, max=100, default=0, suffix="%", callback=function(v) S.REV_HUMAN.personaStrength=v/100 end})
 end
 
+-- MM2
 do local p = P["MM2/Flick"]
-    Cmp.Section(p, "🎮 MM2 FLICK (HACK MODE)")
+    Cmp.Section(p, "🎮 MM2 FLICK (V11.1)")
     Cmp.Toggle(p, {text="Knife Auto-Flick", default=true, callback=function(v) S.MM2_KnifeAutoFlick=v end})
     Cmp.Toggle(p, {text="Gun Auto-Flick", default=true, callback=function(v) S.MM2_GunAutoFlick=v end})
     Cmp.Toggle(p, {text="Round-Start Flick", default=true, callback=function(v) S.MM2_RoundStartFlick=v end})
 end
 do local p = P["MM2/Protect"]
-    Cmp.Section(p, "🎮 MM2 PROTECT (HACK: protect OFF)")
+    Cmp.Section(p, "🎮 MM2 PROTECT")
     Cmp.Toggle(p, {text="Sheriff Protect", default=false, callback=function(v) S.MM2_SheriffProtect=v end})
     Cmp.Toggle(p, {text="After-Kill Reset", default=true, callback=function(v) S.MM2_AfterKillReset=v end})
     Cmp.Toggle(p, {text="Death Flick", default=true, callback=function(v) S.MM2_DeathFlick=v end})
 end
 
+-- DEBUG
 local DEBUG_HUD
 do local p = P["DEBUG/HUD"]
     Cmp.Section(p, "🐞 DEBUG HUD")
     DEBUG_HUD = HB_Create("TextLabel", {
-        Size=newUD2(1,0,0,260), Position=newUD2(0,0,0,32),
+        Size=newUD2(1,0,0,320), Position=newUD2(0,0,0,32),
         BackgroundColor3=c3(0,0,0), BackgroundTransparency=0.4,
         BorderSizePixel=0, Text="",
         Font=E_CODE, TextSize=11, TextColor3=c3(120,255,120),
-        TextXAlignment=E_TXT_LEFT, TextYAlignment=E_TXT_TOP,
-        Visible=true
+        TextXAlignment=E_TXT_LEFT, TextYAlignment=E_TXT_TOP, Visible=true
     }, p)
     HB_Corner(DEBUG_HUD, 6); HB_Stroke(DEBUG_HUD, c3(0,200,0), 1, 0.3)
     Cmp.Toggle(p, {text="Mostrar Debug HUD", default=true, callback=function(v) DEBUG_HUD.Visible=v end})
@@ -2987,24 +3312,26 @@ end
 do local p = P["DEBUG/Info"]
     Cmp.Section(p, "🔍 INFO")
     Cmp.Button(p, {text="🔍 Print Debug (console)", callback=function()
-        print("=== HELLBORN v10.1 · HACK MODE · 1MS · 12 ITER · 1 TIRO · WALL ON ===")
+        print("=== HELLBORN V11.1 · 15 ITER · 1 TIRO · WALL ON · KALMAN6D · PROJ SIM ===")
         print("Cache:", #Cache.List, "Snap:", Flick.snapDur, "Ret:", Flick.returnDur)
         print("OneShot:", S.OneShotPerfect, "Lead:", S.OneShotLead, "Grav:", S.OneShotGravity, "Adapt:", S.OneShotAdaptive)
         print("OneShotIterations:", S.OneShotIterations, "RetryMiss:", S.RetryMiss)
-        print("WallCheck:", S.WallCheck, "(TRAVADO)", "Crosshair:", S.Cross)
+        print("WallCheck:", S.WallCheck, "Crosshair:", S.Cross)
         print("Stretch:", S.ScreenStretch, "Preset:", S.ScreenStretchPreset, "FOV:", Camera.FieldOfView)
         print("Hit attempts:", HB_DBG.hitAttempts or 0, "Hit success:", HB_DBG.hitSuccess or 0)
         print("Retries:", HB_DBG.retries or 0, "WallSkips:", HB_DBG.wallSkips or 0)
         print("Last hit type:", HB_DBG.lastHitType or "none")
         print("Ping smoothed:", HB_GetSmoothedPing())
-        print("Theme:", S.Theme, "FlickMaxDist:", S.FlickMaxDist)
-        print("Config: 1 TIRO + HRP rotation + multipoint LOS + retry (max 1)")
+        print("GlobalOffset:", HB_V11.GlobalOffset)
+        print("MissLog size:", #HB_V11.MissLog)
+        print("StrafeState:", (function() local c = 0; for _ in pairs(HB_V11.StrafeState) do c = c + 1 end; return c end)())
         local s1 = FindSlot1Tool()
         print("Slot1:", s1 and s1.Name or "nil")
         HB_Toast("Ver console (F9)","success")
     end})
 end
 
+-- STATS
 do local p = P["STATS/Session"]
     Cmp.Section(p, "▤ SESSÃO")
     local box = HB_Create("Frame", {
@@ -3025,10 +3352,12 @@ do local p = P["STATS/Reset"]
         Acc.shots = {}
         HB_DBG.hitAttempts = 0; HB_DBG.hitSuccess = 0
         HB_DBG.retries = 0; HB_DBG.wallSkips = 0
+        HB_V11.MissLog = {}; HB_V11.GlobalOffset = v3zero
         HB_Toast("Stats resetados","success")
     end})
 end
 
+-- CONFIG
 do local p = P["CONFIG/Theme"]
     Cmp.Section(p, "🎨 TEMA (HACK: Blood)")
     local list = {}
@@ -3043,9 +3372,9 @@ do local p = P["CONFIG/System"]
     Cmp.Toggle(p, {text="Chat Commands", default=true, callback=function(v) S.ChatCommands=v end})
 end
 do local p = P["CONFIG/AutoSave"]
-    Cmp.Section(p, "💾 AUTO-SAVE (NÃO CARREGA NO BOOT)")
+    Cmp.Section(p, "💾 AUTO-SAVE")
     Cmp.Button(p, {text="💾 Salvar Agora", callback=function() HB_AutoSaveTick(); HB_Toast("Saved","success") end})
-    Cmp.Button(p, {text="📂 Restaurar (pode quebrar HACK MODE)", callback=function() HB_AutoSaveLoad(); HB_Toast("Loaded","success") end})
+    Cmp.Button(p, {text="📂 Restaurar", callback=function() HB_AutoSaveLoad(); HB_Toast("Loaded","success") end})
     Cmp.Button(p, {text="🗑 Apagar", danger=true, callback=function() HB_AutoSaveClear(); HB_Toast("Cleared","danger") end})
 end
 
@@ -3061,6 +3390,7 @@ for _, sf in pairs_(UI.TabContents) do
     sf.CanvasSize = newUD2(0,0,0, maxY + 60)
 end
 
+-- Drag
 local UI_dragState = {active=false, start=nil, origin=nil}
 UIS_InputBegan:Connect(function(input)
     if input.UserInputType ~= E_MOUSE1 then return end
@@ -3088,6 +3418,7 @@ UIS_InputEnded:Connect(function(input)
     if input.UserInputType == E_MOUSE1 then UI_dragState.active = false end
 end)
 
+-- ESP
 ESP_GUI = HB_Create("ScreenGui", {Name="HB_ESP_Overlay", ResetOnSpawn=false, IgnoreGuiInset=true, DisplayOrder=90}, PG)
 ESP_HOLDER = HB_Create("Frame", {Size=newUD2(1,0,1,0), BackgroundTransparency=1}, ESP_GUI)
 ESP_COLORS = {Murderer=c3(255,40,40), Sheriff=c3(50,140,255), Innocent=c3(50,220,90), Dead=c3(120,120,120)}
@@ -3107,6 +3438,7 @@ function ESP_create()
     return {box=box, stroke=st, fill=fill, nameTag=nameTag, distTag=distTag, tracer=tracer, healthBg=healthBg, healthFill=healthFill, weaponTag=weaponTag}
 end
 
+-- Radar
 RADAR_GUI = HB_Create("ScreenGui", {Name="HB_Radar", ResetOnSpawn=false, IgnoreGuiInset=true, DisplayOrder=86}, PG)
 RADAR_FRAME = HB_Create("Frame", {
     Size=newUD2(0,160,0,160), Position=newUD2(0,10,1,-170),
@@ -3116,9 +3448,11 @@ RADAR_FRAME = HB_Create("Frame", {
 HB_Corner(RADAR_FRAME, 80); HB_Stroke(RADAR_FRAME, c3(255,255,255), 2, 0.5)
 HB_Create("Frame", {Size=newUD2(0,8,0,8), Position=newUD2(0.5,-4,0.5,-4), BackgroundColor3=c3(255,255,255), BorderSizePixel=0, ZIndex=72}, RADAR_FRAME)
 
+-- Timeline
 TIMELINE_GUI = HB_Create("ScreenGui", {Name="HB_Timeline", ResetOnSpawn=false, IgnoreGuiInset=true, DisplayOrder=87}, PG)
 TIMELINE_HOLDER = HB_Create("Frame", {Size=newUD2(1,0,1,0), BackgroundTransparency=1}, TIMELINE_GUI)
 
+-- HUD
 HUD_GUI = HB_Create("ScreenGui", {Name="HB_HUD_Overlay", ResetOnSpawn=false, IgnoreGuiInset=true, DisplayOrder=95}, PG)
 KILLFEED = HB_Create("Frame", {Size=newUD2(0,300,0,300), Position=newUD2(1,-310,0,100), BackgroundTransparency=1}, HUD_GUI)
 HITMARKER = HB_Create("Frame", {Size=newUD2(0,40,0,40), Position=newUD2(0.5,-20,0.5,-20), BackgroundTransparency=1, Visible=false, ZIndex=50}, HUD_GUI)
@@ -3233,11 +3567,12 @@ COOLDOWN_BAR = HB_Create("Frame", {Size=newUD2(0,80,0,6), Position=newUD2(0.5,-4
 HB_Corner(COOLDOWN_BAR, 3)
 COOLDOWN_FILL = HB_Create("Frame", {Size=newUD2(1,0,1,0), BackgroundColor3=Palette.Accent, BorderSizePixel=0}, COOLDOWN_BAR)
 HB_Corner(COOLDOWN_FILL, 3)
-FLICK_COUNTER = HB_Create("TextLabel", {Size=newUD2(0,1000,0,22), Position=newUD2(0,20,0,20),
-    BackgroundTransparency=1, Text="💀 HACK MODE | 1MS | 12 ITER | 1 TIRO | KILLS: 0", Font=E_CODE, TextSize=14,
+FLICK_COUNTER = HB_Create("TextLabel", {Size=newUD2(0,1400,0,22), Position=newUD2(0,20,0,20),
+    BackgroundTransparency=1, Text="💀 V11.1 | 1MS | 15 ITER | 1 TIRO | KILLS: 0", Font=E_CODE, TextSize=14,
     TextColor3=Palette.Accent, TextXAlignment=E_TXT_LEFT, TextStrokeTransparency=0.4,
     TextStrokeColor3=c3(0,0,0), ZIndex=10}, HUD_GUI)
 
+-- Sounds
 HB_HitSound = {enabled=true, soundId="rbxasset://sounds/electronicpingshort.wav",
     volume=0.4, pitchMin=1.1, pitchMax=1.4, lastPlay=0, cooldown=0.05, instance=nil}
 HB_KillConfirmSound = {enabled=true, soundId="rbxasset://sounds/electronicpingshort.wav",
@@ -3348,7 +3683,7 @@ HB_ULTRA = {
     RageBurstMode=true,
     AntiVoid=true, AntiVoidYThresh=-5, AntiVoidLift=20,
     OneShotPerfect=true, OneShotLead=true, OneShotGravity=true, OneShotAdaptive=true,
-    OneShotIterations=12, OneShotConverge=true, RetryMiss=true,
+    OneShotIterations=15, OneShotConverge=true, RetryMiss=true,
     ScreenStretch=true, ScreenStretchPreset="21:9 Wide", ScreenStretchFOV=95,
     Theme="Blood",
 }
@@ -3360,7 +3695,7 @@ function HB_ApplyUltra()
         Flick.proMode = false
         Flick.snapDur = 0.001
         Flick.holdDur = 0.001
-        Flick.verifyWait = 0.150
+        Flick.verifyWait = 0.250
         Flick.returnDur = 0.001
         Flick.overshootPct = 0
         Flick.adaptiveOvershoot = false
@@ -3419,12 +3754,12 @@ MetaLearnUpdate = function(perf)
     if perf and perf > 0.5 then pcall(HB_PlayKillSound) else pcall(HB_PlayHitSound) end
 end
 
-local TriggerAccum = 0
+-- [V11.1] Trigger bot com LOS cache
 RS_Heartbeat:Connect(function(dt)
     if not S.TrigOn then return end
-    TriggerAccum = TriggerAccum + dt
-    if TriggerAccum < 1/30 then return end
-    TriggerAccum = 0
+    HB_V11.TriggerAccum = HB_V11.TriggerAccum + dt
+    if HB_V11.TriggerAccum < 1/40 then return end
+    HB_V11.TriggerAccum = 0
     local now = tick()
     local flickBusy = Flick and (Flick.active or (now - (Flick.lastFlickEnd or 0)) < 0.25)
     if flickBusy or now < TriggerSuppressUntil or (Flick and Flick.keyHeld) then return end
@@ -3436,22 +3771,30 @@ RS_Heartbeat:Connect(function(dt)
             local head = Cache.Heads[p2]
             if head then
                 local sp, on = Camera:WorldToViewportPoint(head.Position)
-                if on then
+                if on and sp.Z > 0 then
                     local dx, dy = sp.X - mouse.X, sp.Y - mouse.Y
                     local d = sqrt(dx*dx + dy*dy)
-                    if d < bestD then bestD = d; best = p2 end
+                    if d < bestD then
+                        local ch2 = Cache.Chars[p2]
+                        if ch2 and not HB_HasLOSCached(ch2, mouse, head.Position) then
+                            -- bloqueado, skip
+                        else
+                            bestD = d; best = p2
+                        end
+                    end
                 end
             end
         end
     end
     if not best then return end
     local ch = Cache.Chars[best]
-    if S.WallCheck and ch and not HB_HasLineOfSight(ch) then return end
+    if not ch then return end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
     local s1 = FindSlot1Tool()
     if not s1 then return end
-    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    task.spawn(function()
+    if HB_MM2_IsGunEmpty(s1) then return end
+    spawn(function()
         local eq = HB_EquipAndWait(s1, 0.5)
         if eq and not IsWeaponOnCooldown(eq) then
             local camPos = (Cache.Heads[LP] and Cache.Heads[LP].Position) or Camera.CFrame.Position
@@ -3460,6 +3803,7 @@ RS_Heartbeat:Connect(function(dt)
     end)
 end)
 
+-- ESP loop
 RS_Heartbeat:Connect(function()
     local vpSize = Camera.ViewportSize; local vpX2 = vpSize.X * 0.5; local vpY = vpSize.Y
     local myChar = LP.Character; local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
@@ -3611,6 +3955,7 @@ RS_Heartbeat:Connect(function()
     if CROSSHAIR and CROSSHAIR.Visible ~= S.Cross then CROSSHAIR.Visible = S.Cross end
 end)
 
+-- HUD loop
 local HUDAccum = 0
 RS_Heartbeat:Connect(function(dt)
     HUDAccum = HUDAccum + dt
@@ -3621,11 +3966,18 @@ RS_Heartbeat:Connect(function(dt)
         if HB_DBG.hitAttempts and HB_DBG.hitAttempts > 0 then
             acc = floor((HB_DBG.hitSuccess or 0) / HB_DBG.hitAttempts * 100)
         end
-        FLICK_COUNTER.Text = sformat("💀 HACK MODE | 1MS | 12 ITER | 1 TIRO | KILLS:%d | HIT:%d%% | RETRY:%d | SKIP:%d | SNAP:%dms | WALL:%s | FOV:%d",
+        local avgErr = 0
+        if #HB_V11.MissLog > 0 then
+            local s = 0
+            for i = 1, #HB_V11.MissLog do s = s + HB_V11.MissLog[i].err end
+            avgErr = s / #HB_V11.MissLog
+        end
+        local off = HB_V11.GlobalOffset or v3zero
+        local strafeCount = 0
+        for _ in pairs(HB_V11.StrafeState) do strafeCount = strafeCount + 1 end
+        FLICK_COUNTER.Text = sformat("💀 V11.1 | 1MS | 15 ITER | 1 TIRO | KILLS:%d | HIT:%d%% | RETRY:%d | SKIP:%d | MISS_AVG:%.1f | OFFSET:%.2f,%.2f,%.2f | STRAFE:%d | FOV:%d",
             S.Kills, acc, HB_DBG.retries or 0, HB_DBG.wallSkips or 0,
-            floor((Flick.snapDur or 0)*1000),
-            S.WallCheck and "ON" or "OFF",
-            floor(Camera.FieldOfView))
+            avgErr, off.X, off.Y, off.Z, strafeCount, floor(Camera.FieldOfView))
     end
     if S.ShowCooldownVisual and COOLDOWN_BAR and COOLDOWN_FILL then
         COOLDOWN_BAR.Visible = true
@@ -3650,7 +4002,7 @@ RS_Heartbeat:Connect(function(dt)
             acc = floor((HB_DBG.hitSuccess or 0) / HB_DBG.hitAttempts * 100)
         end
         UI.StatsDisplay.Text = sformat(
-            "💀 v10.1 · HACK MODE · 1MS · 12 ITER · 1 TIRO · WALL ON\n\nKills: %d\nDeaths: %d\nStreak: %d\nBest: %d\nFPS: %.0f\nPing: %dms\n---\nHitrate: %d%%\nTentativas: %d\nSucessos: %d\nRetries: %d\nWallSkips: %d\nLastHit: %s\n---\nOneShot: %s\nLead: %s\nGrav: %s\nAdapt: %s\nRetryMiss: %s\nIterações: %d\n---\nWallCheck: %s (TRAVADO)\nCrosshair: %s\nFOV: %d (%s)\nTheme: %s\nCycle: %s x%d\nAntiVoid: Y%d Lift%d\nTrigOn: %s\nSlot1: %s",
+            "💀 V11.1 · 15 ITER · 1 TIRO · WALL ON · KALMAN6D\n\nKills: %d\nDeaths: %d\nStreak: %d\nBest: %d\nFPS: %.0f\nPing: %dms\n---\nHitrate: %d%%\nTentativas: %d\nSucessos: %d\nRetries: %d\nWallSkips: %d\nLastHit: %s\n---\nOneShot: %s\nLead: %s\nGrav: %s\nAdapt: %s\nRetryMiss: %s\nIterações: %d\n---\nWallCheck: %s\nCrosshair: %s\nFOV: %d (%s)\nTheme: %s\nGlobalOffset: %.2f,%.2f,%.2f\nMissLog: %d\n---\nAntiVoid: Y%d Lift%d\nTrigOn: %s\nSlot1: %s",
             S.Kills, S.Deaths, S.Streak or 0, S.BestStreak or 0,
             fps, ping, acc,
             HB_DBG.hitAttempts or 0, HB_DBG.hitSuccess or 0,
@@ -3661,39 +4013,40 @@ RS_Heartbeat:Connect(function(dt)
             S.OneShotGravity and "ON" or "OFF",
             S.OneShotAdaptive and "ON" or "OFF",
             S.RetryMiss and "ON" or "OFF",
-            S.OneShotIterations or 12,
+            S.OneShotIterations or 15,
             S.WallCheck and "ON" or "OFF",
             S.Cross and "ON" or "OFF",
             floor(Camera.FieldOfView), S.ScreenStretchPreset or "Normal",
             S.Theme or "Blood",
-            S.CycleEnabled and "ON" or "OFF", S.MaxCycles or 3,
+            HB_V11.GlobalOffset.X, HB_V11.GlobalOffset.Y, HB_V11.GlobalOffset.Z,
+            #HB_V11.MissLog,
             S.AntiVoidYThresh or -5, S.AntiVoidLift or 20,
             S.TrigOn and "ON" or "OFF",
             S.PullSlot1 and "ON" or "OFF")
     end
     if DEBUG_HUD and DEBUG_HUD.Visible then
+        local strafeC = 0
+        for _ in pairs(HB_V11.StrafeState) do strafeC = strafeC + 1 end
         DEBUG_HUD.Text = sformat(
-            "💀 HELLBORN v10.1 · HACK MODE · 1MS · 12 ITER · 1 TIRO · WALL ON\nCache:%d | Murderers:%d | Sheriffs:%d\nSnap:%dms Hold:%dms Ret:%dms Ver:%dms\nOneShot:%s Lead:%s Grav:%s Adapt:%s Retry:%s\nIterações:%d\nAttempts:%d Success:%d Retries:%d WallSkips:%d\nLOCK TYPE: %s\nFired:%s Verified:%s\nWallCheck:%s (TRAVADO) Cross:%s(%s %dpx)\nStretch:%s FOV:%d(%s)\nPing smooth:%.0fms\nKills:%d | Cycle:%s x%d\nMaxDist:%d Kalman:%dms\nTrigOn:%s Rad:%d CD:%.2f\nAntiVoid Y:%d Lift:%d\nFPS:%.0f",
+            "💀 HELLBORN V11.1 · 1MS · 15 ITER · 1 TIRO · WALL ON\nCache:%d | M:%d S:%d\nSnap:%dms Hold:%dms Ret:%dms Ver:%dms\nOneShot:%s Lead:%s Grav:%s Adapt:%s Retry:%s\nIterações:%d\nAttempts:%d Success:%d Retries:%d WallSkips:%d\nLOCK TYPE: %s\nWallCheck:%s Cross:%s\nStretch:%s FOV:%d(%s)\nPing:%.0fms GlobalOffset:%.2f,%.2f,%.2f\nMissLog:%d Strafe:%d\nKills:%d | FPS:%.0f",
             #Cache.List, HB_DBG.murders or 0, HB_DBG.sheriffs or 0,
             floor((Flick.snapDur or 0)*1000), floor((Flick.holdDur or 0)*1000),
             floor((Flick.returnDur or 0)*1000), floor((Flick.verifyWait or 0)*1000),
             tostring(S.OneShotPerfect), tostring(S.OneShotLead), tostring(S.OneShotGravity), tostring(S.OneShotAdaptive), tostring(S.RetryMiss),
-            S.OneShotIterations or 12,
+            S.OneShotIterations or 15,
             HB_DBG.hitAttempts or 0, HB_DBG.hitSuccess or 0,
             HB_DBG.retries or 0, HB_DBG.wallSkips or 0,
             tostring(HB_DBG.lastHitType or "none"),
-            tostring(Flick.fired), tostring(Flick.hitVerified),
-            tostring(S.WallCheck), tostring(S.Cross), tostring(S.CrossStyle), S.CrossSize,
+            tostring(S.WallCheck), tostring(S.Cross),
             tostring(S.ScreenStretch), floor(Camera.FieldOfView), S.ScreenStretchPreset or "21:9 Wide",
             HB_GetSmoothedPing() * 1000,
-            S.Kills, tostring(S.CycleEnabled), S.MaxCycles or 3,
-            S.FlickMaxDist or 9999, floor((S.KalmanPredTime or 0.01) * 1000),
-            tostring(S.TrigOn), S.TrigRad or 300, S.TrigCD or 0.01,
-            S.AntiVoidYThresh or -5, S.AntiVoidLift or 20,
-            FPS.cur or 60)
+            HB_V11.GlobalOffset.X, HB_V11.GlobalOffset.Y, HB_V11.GlobalOffset.Z,
+            #HB_V11.MissLog, strafeC,
+            S.Kills, FPS.cur or 60)
     end
 end)
 
+-- Task loop
 local TaskAccum = {t5=0, t30=0}
 RS_Heartbeat:Connect(function(dt)
     TaskAccum.t5 = TaskAccum.t5 + dt; TaskAccum.t30 = TaskAccum.t30 + dt
@@ -3708,475 +4061,88 @@ RS_Heartbeat:Connect(function(dt)
     end
 end)
 
--- ═══════════════════════════════════════════════════════════
--- 💀 BOOT HACK MODE
--- ═══════════════════════════════════════════════════════════
+-- Input handlers
+UIS_InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == E_KEYBOARD then
+        local kc = input.KeyCode
+        if kc == S.FlickKey then
+            Flick.keyHeld = true
+            if not Flick.active then
+                local now = tick()
+                if S.PostKillDelay and now < PostKillTimer.until_ then return end
+                if S.AntiFlickBlock and now < AntiFlickGuard.backoffUntil then return end
+                if S.HoldToFlick then return end
+                local q = FindMurderQueue()
+                if #q > 0 then
+                    Flick.lastFlickEnd = 0
+                    TriggerSuppressUntil = now + 0.50
+                    StartFlick(q[1], "manual")
+                end
+            end
+        elseif kc == Enum.KeyCode.Insert then
+            if UI and UI.Main then UI.Main.Visible = not UI.Main.Visible end
+        elseif kc == Enum.KeyCode.F1 then
+            S.AutoFlick=false S.TrigOn=false S.ESP=false
+            HB_ForceRestoreCamera(); HB_Toast("PANIC", "danger")
+        elseif kc == Enum.KeyCode.F6 then
+            HB_ForceRestoreCamera(); HB_Toast("Câmera OK", "success")
+        elseif kc == Enum.KeyCode.F4 then HB_ApplyUltra()
+        elseif kc == Enum.KeyCode.F5 then HB_ApplyUltra()
+        elseif kc == Enum.KeyCode.F7 then HB_ApplyUltra()
+        elseif kc == Enum.KeyCode.F8 then HB_ApplyUltra()
+        elseif kc == Enum.KeyCode.F9 then HB_ApplyUltra() end
+    end
+end)
+UIS_InputEnded:Connect(function(input)
+    if input.UserInputType == E_KEYBOARD and input.KeyCode == S.FlickKey then
+        Flick.keyHeld = false
+        if S.HoldToFlick and not Flick.active and S.AutoFlick then
+            local now = tick()
+            if S.AntiFlickBlock and now < AntiFlickGuard.backoffUntil then return end
+            local q = FindMurderQueue()
+            if #q > 0 then StartFlick(q[1], "hold-release") end
+        end
+    end
+end)
+
+LP.Chatted:Connect(function(msg)
+    if not S.ChatCommands then return end
+    local cmd, arg = msg:match("^/hb%s+(%S+)%s*(.*)")
+    if not cmd then return end
+    if cmd == "flick" then S.AutoFlick = (arg ~= "off")
+    elseif cmd == "esp" then S.ESP = (arg ~= "off")
+    elseif cmd == "trigger" then S.TrigOn = (arg ~= "off")
+    elseif cmd == "ultra" then HB_ApplyUltra(); HB_Toast("V11.1 aplicado","danger")
+    elseif cmd == "slot1" then S.PullSlot1 = (arg ~= "off"); HB_Toast("Slot1 "..tostring(S.PullSlot1),"success")
+    elseif cmd == "oneshot" then S.OneShotPerfect = (arg ~= "off"); HB_Toast("OneShot "..tostring(S.OneShotPerfect),"success")
+    elseif cmd == "lead" then S.OneShotLead = (arg ~= "off"); HB_Toast("Lead "..tostring(S.OneShotLead),"success")
+    elseif cmd == "grav" then S.OneShotGravity = (arg ~= "off"); HB_Toast("Grav "..tostring(S.OneShotGravity),"success")
+    elseif cmd == "adapt" then S.OneShotAdaptive = (arg ~= "off"); HB_Toast("Adapt "..tostring(S.OneShotAdaptive),"success")
+    elseif cmd == "cross" then S.Cross = (arg ~= "off"); if HB_BuildCrosshair then HB_BuildCrosshair() end; HB_Toast("Cross "..tostring(S.Cross),"success")
+    elseif cmd == "wallcheck" then S.WallCheck = true; HB_Toast("WallCheck ON (travado)","success")
+    elseif cmd == "stretch" then
+        S.ScreenStretch = (arg ~= "off"); HB_ApplyScreenStretch()
+        HB_Toast("Stretch "..tostring(S.ScreenStretch),"success")
+    elseif cmd == "fov" then
+        local n = tonumber(arg)
+        if n and n >= 20 and n <= 120 then
+            S.ScreenStretch = true; S.ScreenStretchPreset = "Custom"
+            S.ScreenStretchFOV = floor(n); HB_ApplyScreenStretch()
+            HB_Toast("FOV: "..S.ScreenStretchFOV,"success")
+        end
+    elseif cmd == "resetscreen" then HB_ResetScreenStretch(); HB_Toast("Tela resetada","success")
+    elseif cmd == "gundrop" then S.GunDropESP = (arg ~= "off"); HB_Toast("GunDrop "..tostring(S.GunDropESP),"success")
+    elseif cmd == "fixcam" then HB_ForceRestoreCamera(); HB_Toast("Câmera OK","success")
+    elseif cmd == "panic" then S.AutoFlick=false S.TrigOn=false S.ESP=false; HB_Toast("Panic!","danger")
+    elseif cmd == "hide" then if UI and UI.Main then UI.Main.Visible=false end
+    elseif cmd == "show" then if UI and UI.Main then UI.Main.Visible=true end end
+end)
+
+-- Boot final
 S.TrigOn = false
 UI.switchMain("AIM")
 UI_main.Visible = true
-HB_ApplyUltra()
-S.WallCheck = true
-S.Cross = false
-S.CycleEnabled = true
-S.MaxCycles = 3
-S.OneShotIterations = 12
-S.KalmanPredTime = 0.01
-S.ESPThick = 5
-S.FPSAdaptive = false
-S.TrigOn = false
-S.TrigRad = 300
-S.TrigCD = 0.01
-S.AntiVoidYThresh = -5
-S.AntiVoidLift = 20
-S.ScreenStretchPreset = "21:9 Wide"
-S.ScreenStretchFOV = 95
-S.ScreenStretch = true
-S.RetryMiss = true
-if Themes.Blood then Palette.Accent = Themes.Blood end
-HB_ForceRestoreCamera()
-HB_ApplyScreenStretch()
-if HB_BuildCrosshair then HB_BuildCrosshair() end
-UIS.MouseIconEnabled = true
-task.spawn(function() task.wait(1); HB_ApplyVisuals() end)
-game:BindToClose(function() HB_RemoveVisuals() end)
-HB_Toast("💀 HACK MODE · Wall ON · Cross OFF · Trig OFF · 1ms · 12 iter · 1 TIRO · HRP rotation · FOV 95", "danger")
-print("[HELLBORN] COMPLETO — HACK MODE · Wall ON · Cross OFF · Trig OFF · 1ms · 12 iter · 1 TIRO · HRP ROT · FOV 95")
-_G.HB_KILL = function()
-    _G.HB_ALIVE = nil
-    if _G.HB and _G.HB.CONNECTIONS then
-        for i = 1, #_G.HB.CONNECTIONS do
-            pcall(function() _G.HB.CONNECTIONS[i]:Disconnect() end)
-        end
-    end
-    pcall(function() Camera.FieldOfView = 70 end)
-    pcall(function() UIS.MouseIconEnabled = true end)
-end
---==============================================================
--- HB MAX RAGE — BLOCO ÚNICO (PATCH + BOOT + TRAVA)
--- Cola no FINAL do script existente. Substitui funções em runtime.
--- 1 TIRO · WALL CHECK TRAVADO · 15 ITER · HRP ROT · MULTIPOINT
---==============================================================
-
--- [1] SILENT FIRE — HRP ROTATION (crítico p/ MM2) + 1 bala
-function SilentFire(tool, aimPos, bypassCooldown)
-    if not tool or not aimPos or not tool.Parent then return false end
-    local lpCh = LP.Character; if not lpCh then return false end
-    if tool.Parent ~= lpCh then
-        local eq = HB_EquipAndWait(tool, 0.5)
-        if not eq or eq ~= tool then
-            local s1 = FindSlot1Tool()
-            if s1 then eq = HB_EquipAndWait(s1, 0.5) end
-            if not eq then return false end
-            tool = eq
-        end
-    end
-    local now = tick()
-    if not bypassCooldown and now - Sil.lastFire < 0.03 then return false end
-    Sil.lastFire = now
-    local hum = lpCh:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then return false end
-    local head = lpCh:FindFirstChild("Head")
-    local hrp  = lpCh:FindFirstChild("HumanoidRootPart")
-    local handle = tool:FindFirstChild("Handle")
-    local fireFromPos = (handle and handle.Position) or (head and head.Position) or Camera.CFrame.Position
-    local oldAuto = hum.AutoRotate
-    local oldHeadCF = head and head.CFrame
-    local oldHrpCF  = hrp and hrp.CFrame
-    local oldHandleCF = handle and handle.CFrame
-    hum.AutoRotate = false
-    if hrp    then pcall(function() hrp.CFrame    = lookAt(hrp.Position,    aimPos) end) end
-    if handle then pcall(function() handle.CFrame = lookAt(handle.CFrame.Position, aimPos) end) end
-    if head   then pcall(function() head.CFrame   = lookAt(head.CFrame.Position,   aimPos) end) end
-    local fakePart
-    if Mouse then
-        pcall(function()
-            fakePart = Instance_new("Part")
-            fakePart.Size = newV3(0.1, 0.1, 0.1); fakePart.Transparency = 1
-            fakePart.CanCollide = false; fakePart.Anchored = true
-            fakePart.CFrame = newCF(aimPos); fakePart.Parent = workspace
-            Mouse.Target = fakePart
-        end)
-    end
-    local ok = pcall(function() tool:Activate() end)
-    if handle and oldHandleCF then handle.CFrame = oldHandleCF end
-    if head and oldHeadCF then pcall(function() head.CFrame = oldHeadCF end) end
-    if hrp  and oldHrpCF  then pcall(function() hrp.CFrame  = oldHrpCF  end) end
-    hum.AutoRotate = oldAuto
-    if fireFromPos and HB_Tracer and HB_Tracer.enabled then
-        if (not IsHitscan(tool)) or HB_Tracer.ignoreHitscan then
-            spawn(HB_SpawnTracer, fireFromPos, aimPos)
-        end
-    end
-    if fakePart then delay(0.05, function() if fakePart then fakePart:Destroy() end end) end
-    if ok then Weapon.lastFireTime[tool] = now end
-    return ok
-end
-
--- [2] LEAD ITERATIVO — 15 PASS · CONVERGÊNCIA < 0.003 · FPS-AWARE · HITSCAN-AWARE
-function HB_CalcLeadPosIterative(tp, ch, camPos, tool)
-    if not ch or not ch.Parent then return nil end
-    local head = ch:FindFirstChild("Head")
-    local hrp  = ch:FindFirstChild("HumanoidRootPart")
-    if not head then return nil end
-    local h = Hst[tp]
-    local vel = (h and h.vel) or (hrp and hrp.AssemblyLinearVelocity) or v3zero
-    local acc = (h and h.acc) or v3zero
-    local spd = GetWeaponSpeed(tool) or 2500
-    local ping = HB_GetSmoothedPing()
-    local basePos = head.Position
-    local finalPos = basePos
-    local iterations = S.OneShotIterations or 15
-    local frameTime = 1 / math.max(FPS.cur or 60, 30)
-    local hitscan = IsHitscan(tool)
-    for iter = 1, iterations do
-        local dist = (finalPos - camPos).Magnitude
-        local travel = hitscan and 0 or (dist / spd)
-        local t = travel + (ping * 0.5) + frameTime
-        local targetPoint = basePos + vel * t
-        if S.OneShotLead and acc.Magnitude > 0.1 then
-            targetPoint = targetPoint + acc * (0.5 * t * t)
-        end
-        if S.OneShotGravity and not hitscan then
-            targetPoint = newV3(targetPoint.X, targetPoint.Y + 0.5 * 196.2 * t * t, targetPoint.Z)
-        end
-        if h and h.dirChanges > 3 and h.lastDirChangeT and (tick() - h.lastDirChangeT) < 0.4 then
-            targetPoint = targetPoint + h.vel * 0.012
-        end
-        if h and h.isCrouch and S.HeadOnlyLock then
-            targetPoint = newV3(targetPoint.X, targetPoint.Y - 0.35, targetPoint.Z)
-        elseif h and h.isJumping and S.HeadOnlyLock then
-            targetPoint = newV3(targetPoint.X, targetPoint.Y + 0.25, targetPoint.Z)
-        end
-        if S.OneShotAdaptive then
-            local mem = OneShotMem[tp]
-            if mem and mem.offset then
-                local age = tick() - mem.t
-                local decay = max(0, 1 - age / 20)
-                targetPoint = targetPoint + mem.offset * decay
-            end
-        end
-        if (targetPoint - finalPos).Magnitude < 0.003 then finalPos = targetPoint; break end
-        finalPos = targetPoint
-    end
-    local finalDist = (finalPos - camPos).Magnitude
-    local finalT = (hitscan and 0 or (finalDist / spd)) + (ping * 0.5) + frameTime
-    return finalPos, finalT, finalDist
-end
-
--- [3] VERIFY LOS — RAYCAST INCLUDE (só no char alvo)
-function HB_VerifyLOS(ch, camPos, aim)
-    if not ch or not ch.Parent then return aim, false, nil end
-    local params = RaycastParams.new()
-    params.FilterType = E_RFT_INCLUDE
-    params.FilterDescendantsInstances = {ch}
-    params.IgnoreWater = true
-    params.RespectCanCollide = false
-    local result = workspace:Raycast(camPos, aim - camPos, params)
-    if result and result.Instance then
-        return result.Position, true, result.Instance
-    end
-    return aim, false, nil
-end
-
--- [4] MULTIPOINT LOS — 51 PONTOS
-function HB_MultiPointAim(ch, camPos, basePoint)
-    if not ch or not ch.Parent then return basePoint, false, nil end
-    local offsets = {
-        Vector3.new(0, 0, 0),
-        Vector3.new(0.08, 0, 0),    Vector3.new(-0.08, 0, 0),
-        Vector3.new(0, 0.08, 0),    Vector3.new(0, -0.08, 0),
-        Vector3.new(0, 0, 0.08),    Vector3.new(0, 0, -0.08),
-        Vector3.new(0.16, 0, 0),    Vector3.new(-0.16, 0, 0),
-        Vector3.new(0, 0.16, 0),    Vector3.new(0, -0.16, 0),
-        Vector3.new(0, 0, 0.16),    Vector3.new(0, 0, -0.16),
-        Vector3.new(0.25, 0, 0),    Vector3.new(-0.25, 0, 0),
-        Vector3.new(0, 0.25, 0),    Vector3.new(0, -0.25, 0),
-        Vector3.new(0, 0, 0.25),    Vector3.new(0, 0, -0.25),
-        Vector3.new(0.35, 0, 0),    Vector3.new(-0.35, 0, 0),
-        Vector3.new(0, 0.35, 0),    Vector3.new(0, -0.35, 0),
-        Vector3.new(0, 0, 0.35),    Vector3.new(0, 0, -0.35),
-        Vector3.new(0.5, 0, 0),     Vector3.new(-0.5, 0, 0),
-        Vector3.new(0, 0.5, 0),     Vector3.new(0, -0.5, 0),
-        Vector3.new(0, 0, 0.5),     Vector3.new(0, 0, -0.5),
-        Vector3.new(0.7, 0, 0),     Vector3.new(-0.7, 0, 0),
-        Vector3.new(0, 0.7, 0),     Vector3.new(0, -0.7, 0),
-        Vector3.new(0.16, 0.16, 0), Vector3.new(-0.16, 0.16, 0),
-        Vector3.new(0.16, -0.16, 0),Vector3.new(-0.16, -0.16, 0),
-        Vector3.new(0.16, 0, 0.16), Vector3.new(-0.16, 0, 0.16),
-        Vector3.new(0.35, 0.35, 0), Vector3.new(-0.35, 0.35, 0),
-        Vector3.new(0.35, -0.35, 0),Vector3.new(-0.35, -0.35, 0),
-        Vector3.new(0, 0.35, 0.35), Vector3.new(0, 0.35, -0.35),
-        Vector3.new(0, -0.35, 0.35),Vector3.new(0, -0.35, -0.35),
-        Vector3.new(0.5, 0.5, 0),   Vector3.new(-0.5, 0.5, 0),
-    }
-    for i = 1, #offsets do
-        local testPoint = basePoint + offsets[i]
-        local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, camPos, testPoint)
-        if hasLOS then return hitPos, true, hitPart end
-    end
-    return basePoint, false, nil
-end
-
--- [5] HAS LOS FROM→TO — RAYCAST EXCLUDE
-function HB_HasLOSFromTo(fromPos, toPos, targetChar)
-    if not fromPos or not toPos then return false end
-    local ignore = {LP.Character}
-    if targetChar then ignore[#ignore+1] = targetChar end
-    local params = RaycastParams.new()
-    params.FilterType = E_RFT_EXCLUDE
-    params.FilterDescendantsInstances = ignore
-    params.IgnoreWater = true
-    params.RespectCanCollide = false
-    return workspace:Raycast(fromPos, toPos - fromPos, params) == nil
-end
-
--- [6] FIND AIM WITH LOS — 37 OFFSETS
-function HB_FindAimWithLOS(ch, fromPos, baseAim)
-    if not ch or not ch.Parent then return baseAim, false end
-    if HB_HasLOSFromTo(fromPos, baseAim, ch) then return baseAim, true end
-    local offsets = {
-        Vector3.new(0.25, 0, 0),  Vector3.new(-0.25, 0, 0),
-        Vector3.new(0, 0.25, 0),  Vector3.new(0, -0.25, 0),
-        Vector3.new(0, 0, 0.25),  Vector3.new(0, 0, -0.25),
-        Vector3.new(0.5, 0, 0),   Vector3.new(-0.5, 0, 0),
-        Vector3.new(0, 0.5, 0),   Vector3.new(0, -0.5, 0),
-        Vector3.new(0, 0, 0.5),   Vector3.new(0, 0, -0.5),
-        Vector3.new(0.75, 0, 0),  Vector3.new(-0.75, 0, 0),
-        Vector3.new(0, 0.75, 0),  Vector3.new(0, -0.75, 0),
-        Vector3.new(0, 0, 0.75),  Vector3.new(0, 0, -0.75),
-        Vector3.new(1.0, 0, 0),   Vector3.new(-1.0, 0, 0),
-        Vector3.new(0, 1.0, 0),   Vector3.new(0, -1.0, 0),
-        Vector3.new(0.25, 0.25, 0),Vector3.new(-0.25, 0.25, 0),
-        Vector3.new(0.25, -0.25, 0),Vector3.new(-0.25, -0.25, 0),
-        Vector3.new(0, 0.25, 0.25),Vector3.new(0, 0.25, -0.25),
-        Vector3.new(0, -0.25, 0.25),Vector3.new(0, -0.25, -0.25),
-        Vector3.new(0.5, 0.5, 0),  Vector3.new(-0.5, 0.5, 0),
-        Vector3.new(0.5, -0.5, 0), Vector3.new(-0.5, -0.5, 0),
-        Vector3.new(1.2, 0, 0),   Vector3.new(-1.2, 0, 0),
-        Vector3.new(0, 1.2, 0),   Vector3.new(0, -1.2, 0),
-        Vector3.new(1.2, 0.6, 0), Vector3.new(-1.2, 0.6, 0),
-    }
-    for i = 1, #offsets do
-        local testAim = baseAim + offsets[i]
-        if HB_HasLOSFromTo(fromPos, testAim, ch) then return testAim, true end
-    end
-    return baseAim, false
-end
-
--- [7] PERFECT AIM — HEAD → HEAD GRID → HRP → TORSO → MULTIPOINT → NIL (não atira sem LOS)
-function HB_PerfectAim(tp, ch, camPos, tool, hum)
-    if not ch or not ch.Parent or not hum or hum.Health <= 0 then return nil end
-    local head = ch:FindFirstChild("Head")
-    local hrp  = ch:FindFirstChild("HumanoidRootPart")
-    local upperTorso = ch:FindFirstChild("UpperTorso") or ch:FindFirstChild("Torso")
-    if not head then return nil end
-    local leadAim, t, dist = HB_CalcLeadPosIterative(tp, ch, camPos, tool)
-    if not leadAim then return nil end
-    local fireOrigin = camPos
-    local lpHead = Cache.Heads[LP]
-    if lpHead then fireOrigin = lpHead.Position end
-    local function tryPoint(p)
-        local hitPos, hasLOS, hitPart = HB_VerifyLOS(ch, fireOrigin, p)
-        if hasLOS then return hitPos, hitPart end
-        return nil
-    end
-    local p, part = tryPoint(leadAim)
-    if p then return p, t, dist, (part and part.Name) or "head" end
-    p, part = tryPoint(head.Position)
-    if p then return p, t, dist, "head_static" end
-    local grid = {
-        Vector3.new(0.15, 0, 0),   Vector3.new(-0.15, 0, 0),
-        Vector3.new(0, 0.15, 0),   Vector3.new(0, -0.15, 0),
-        Vector3.new(0, 0, 0.15),   Vector3.new(0, 0, -0.15),
-        Vector3.new(0.3, 0, 0),    Vector3.new(-0.3, 0, 0),
-        Vector3.new(0, 0.3, 0),    Vector3.new(0, -0.3, 0),
-        Vector3.new(0, 0, 0.3),    Vector3.new(0, 0, -0.3),
-        Vector3.new(0.5, 0, 0),    Vector3.new(-0.5, 0, 0),
-        Vector3.new(0, 0.5, 0),    Vector3.new(0, -0.5, 0),
-        Vector3.new(0.15, 0.15, 0),Vector3.new(-0.15, 0.15, 0),
-        Vector3.new(0.15, -0.15, 0),Vector3.new(-0.15, -0.15, 0),
-        Vector3.new(0.3, 0.3, 0),  Vector3.new(-0.3, 0.3, 0),
-        Vector3.new(0.3, -0.3, 0), Vector3.new(-0.3, -0.3, 0),
-    }
-    for i = 1, #grid do
-        p = tryPoint(head.Position + grid[i])
-        if p then return p, t, dist, "head_grid" end
-    end
-    if hrp then
-        local v = (Hst[tp] and Hst[tp].vel) or hrp.AssemblyLinearVelocity or v3zero
-        local hrpLead = hrp.Position + v * (t or 0.05)
-        p = tryPoint(hrpLead)
-        if p then return p, t, dist, "hrp" end
-        p = tryPoint(hrp.Position)
-        if p then return p, t, dist, "hrp_static" end
-    end
-    if upperTorso then
-        local v = (Hst[tp] and Hst[tp].vel) or v3zero
-        local upLead = upperTorso.Position + v * (t or 0.05)
-        p = tryPoint(upLead)
-        if p then return p, t, dist, "upper_torso" end
-        p = tryPoint(upperTorso.Position)
-        if p then return p, t, dist, "upper_torso_static" end
-    end
-    local mpAim, mpLOS = HB_MultiPointAim(ch, fireOrigin, leadAim)
-    if mpLOS then return mpAim, t, dist, "multipoint" end
-    return nil
-end
-
--- [8] PERFECT SHOT — 1 TIRO · WALL CHECK OBRIGATÓRIO · SEM RETRY
-function HB_PerfectShot(tp, ch, hum, camPos, tool)
-    if not tool or not ch or not hum then return false end
-    if hum.Health <= 0 or not hum.Parent then return true end
-    local head = ch:FindFirstChild("Head")
-    if not head then return false end
-    local aim, t, dist, hitType = HB_PerfectAim(tp, ch, camPos, tool, hum)
-    if not aim then
-        HB_DBG.wallSkips = (HB_DBG.wallSkips or 0) + 1
-        return false
-    end
-    local lpHead = Cache.Heads[LP]
-    local fireOrigin = lpHead and lpHead.Position or camPos
-    local losAim, hasLOS = HB_FindAimWithLOS(ch, fireOrigin, aim)
-    if not hasLOS then
-        HB_DBG.wallSkips = (HB_DBG.wallSkips or 0) + 1
-        return false
-    end
-    aim = losAim
-    local hpBefore = hum.Health
-    HB_DBG.hitAttempts = (HB_DBG.hitAttempts or 0) + 1
-    HB_DBG.lastHitType = hitType or "none"
-    local fired = false
-    for equipTry = 1, 5 do
-        local ok = SilentFire(tool, aim, true)
-        if ok then fired = true; break end
-        task.wait(0.02)
-    end
-    if not fired then return false end
-    local verifyStart = tick()
-    while tick() - verifyStart < 0.25 do
-        RS_Heartbeat:Wait()
-        if not hum.Parent or hum.Health < hpBefore then
-            HB_DBG.hitSuccess = (HB_DBG.hitSuccess or 0) + 1
-            OneShotMem[tp] = nil
-            return true
-        end
-    end
-    local lastMissOffset = head.Position - aim
-    if S.OneShotAdaptive and lastMissOffset then
-        local prev = OneShotMem[tp]
-        if prev and prev.offset then
-            local age = tick() - prev.t
-            local decayFactor = max(0.4, 1 - age / 15)
-            OneShotMem[tp] = {offset = prev.offset * decayFactor * 0.5 + lastMissOffset * 0.5, t = tick()}
-        else
-            OneShotMem[tp] = {offset = lastMissOffset * 0.6, t = tick()}
-        end
-    end
-    return false
-end
-
--- [9] FIND MURDER QUEUE — WALL CHECK OBRIGATÓRIO NA SELEÇÃO
-function FindMurderQueue()
-    local origin
-    local lpHrp = Cache.HRPs[LP]
-    if lpHrp then origin = lpHrp.Position else origin = Camera.CFrame.Position end
-    local maxDist = S.FlickMaxDist or 9999
-    local cands = {}
-    local m, s, i_count = 0, 0, 0
-    for i = 1, #Cache.List do
-        local p = Cache.List[i]
-        if p ~= LP then
-            local role = GetRole(p)
-            if role == "Murderer" then m = m + 1 elseif role == "Sheriff" then s = s + 1 else i_count = i_count + 1 end
-            if role == "Murderer" then
-                local ch = Cache.Chars[p]; local hrp = Cache.HRPs[p]
-                if ch and ch.Parent and hrp then
-                    local hum = ch:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.Health > 0 then
-                        local d = (hrp.Position - origin).Magnitude
-                        if d <= maxDist and HB_HasLineOfSight(ch) then
-                            cands[#cands+1] = {player=p, char=ch, hum=hum, dist=d}
-                        end
-                    end
-                end
-            end
-        end
-    end
-    HB_DBG.murders = m; HB_DBG.sheriffs = s; HB_DBG.innocents = i_count
-    HB_DBG.lastQueue = #cands
-    tsort(cands, function(a,b) return a.dist < b.dist end)
-    return cands
-end
-
--- [10] HB_APPLY_ULTRA — TRAVA WALL + 1 TIRO + 15 ITER
-function HB_ApplyUltra()
-    for k, v in pairs_(HB_ULTRA) do S[k] = v end
-    S.WallCheck = true
-    S.RetryMiss = false
-    S.OneShotIterations = 15
-    S.OneShotPerfect = true
-    S.OneShotLead = true
-    S.OneShotGravity = true
-    S.OneShotAdaptive = true
-    S.FlickMaxDist = 9999
-    if Flick then
-        Flick.oneShot = true
-        Flick.retriesLeft = 0
-        Flick.proMode = false
-        Flick.snapDur = 0.001
-        Flick.holdDur = 0.001
-        Flick.verifyWait = 0.250
-        Flick.returnDur = 0.001
-        Flick.overshootPct = 0
-        Flick.adaptiveOvershoot = false
-        Flick.microJitter = 0
-        Flick.microJitterRate = 10
-        Flick.preDipEnabled = false
-        Flick.preDipDur = 0
-        Flick.preDipAmount = 0
-        Flick.fireAtPeak = true
-        Flick.reactionDelay = 0
-        Flick.recoilEnabled = false
-        Flick.recoilAmount = 0
-        Flick.postShotSettle = 0
-    end
-    if S.REV_HUMAN then
-        S.REV_HUMAN.warmup=false S.REV_HUMAN.cooldown=false
-        S.REV_HUMAN.fatigue=false S.REV_HUMAN.cognitive=false S.REV_HUMAN.emotion=false
-        S.REV_HUMAN.squad=false S.REV_HUMAN.reputation=false S.REV_HUMAN.altDetect=false
-        S.REV_HUMAN.persona = "aggressive"; S.REV_HUMAN.personaStrength = 0.0
-    end
-    if S.REV_AI then
-        for k, _ in pairs_(S.REV_AI) do
-            if type(S.REV_AI[k]) == "boolean" then S.REV_AI[k] = false end
-        end
-    end
-    if S.REV_STEALTH then
-        for k, _ in pairs_(S.REV_STEALTH) do
-            if type(S.REV_STEALTH[k]) == "boolean" then S.REV_STEALTH[k] = false end
-        end
-    end
-    if S.REV_MAD then
-        for k, _ in pairs_(S.REV_MAD) do
-            if type(S.REV_MAD[k]) == "boolean" then S.REV_MAD[k] = false end
-        end
-    end
-    if S.REV_SOCIAL then
-        for k, _ in pairs_(S.REV_SOCIAL) do
-            if type(S.REV_SOCIAL[k]) == "boolean" then S.REV_SOCIAL[k] = false end
-        end
-    end
-    if Themes.Blood then Palette.Accent = Themes.Blood end
-    HB_ForceRestoreCamera()
-    HB_ApplyScreenStretch()
-    if HB_BuildCrosshair then HB_BuildCrosshair() end
-    UIS.MouseIconEnabled = true
-end
-
--- [11] BOOT MAX RAGE
-S.TrigOn = false
-if UI and UI.switchMain then UI.switchMain("AIM") end
-if UI_main then UI_main.Visible = true end
 HB_ApplyUltra()
 S.WallCheck = true
 S.Cross = false
@@ -4187,7 +4153,7 @@ S.OneShotPerfect = true
 S.OneShotLead = true
 S.OneShotGravity = true
 S.OneShotAdaptive = true
-S.RetryMiss = false
+S.RetryMiss = true
 S.KalmanPredTime = 0.01
 S.ESPThick = 5
 S.FPSAdaptive = false
@@ -4204,14 +4170,12 @@ HB_ForceRestoreCamera()
 HB_ApplyScreenStretch()
 if HB_BuildCrosshair then HB_BuildCrosshair() end
 UIS.MouseIconEnabled = true
-task.spawn(function() task.wait(1); if HB_ApplyVisuals then HB_ApplyVisuals() end end)
-game:BindToClose(function() if HB_RemoveVisuals then HB_RemoveVisuals() end end)
-if HB_Toast then
-    HB_Toast("💀 MAX RAGE · 1 TIRO · WALL TRAVADO · 15 ITER · HRP ROT · FOV 95", "danger")
-end
-print("[HELLBORN] MAX RAGE OK — 1 TIRO · WALL TRAVADO · 15 ITER · HRP ROT · MULTIPOINT · FOV 95")
+spawn(function() wait(1); HB_ApplyVisuals() end)
+game:BindToClose(function() HB_RemoveVisuals() end)
+HB_Toast("💀 V11.1 · 15 ITER · 1 TIRO · KALMAN6D · PROJ SIM · STRAFE · FOV 95", "danger")
+print("[HELLBORN V11.1] COMPLETO — 15 ITER · 1 TIRO · KALMAN6D · PROJ SIM · STRAFE · HRP ROT · MOUSE.HIT · MM2 AWARE · FOV 95")
 
--- [12] KILLSWITCH FINAL (sobrescreve o antigo)
+-- Killswitch
 _G.HB_KILL = function()
     _G.HB_ALIVE = nil
     if _G.HB and _G.HB.CONNECTIONS then
@@ -4219,8 +4183,18 @@ _G.HB_KILL = function()
             pcall(function() _G.HB.CONNECTIONS[i]:Disconnect() end)
         end
     end
+    pcall(function()
+        if Mouse then
+            Mouse.Target = nil
+            Mouse.TargetFilter = nil
+        end
+    end)
+    HB_V11.LOSCache = {}
+    HB_V11.MissLog = {}
+    HB_V11.GlobalOffset = v3zero
+    HB_V11.StrafeState = {}
+    HB_V11.ProjectileSim = {}
     pcall(function() Camera.FieldOfView = 70 end)
     pcall(function() UIS.MouseIconEnabled = true end)
+    print("[HELLBORN V11.1] Killswitch executado — estado limpo")
 end
-
-print("[HB] PATCH MAX RAGE CARREGADO — funções substituídas em runtime")
